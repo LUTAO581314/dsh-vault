@@ -1,0 +1,9 @@
+# 只忽略真正的垃圾；存档要完整
+node_modules/
+*.tgz
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db
+.scratch/
+scripts/tmp-*.mjs

@@ -1,0 +1,249 @@
+# dsh-rea — REA (Reverse Engineer Anything) bundle patch.
+# 三条行，职责分开：
+#   1. `dsh-rea`（host 平面）—— 本包插件本体：
+#        · 开机幂等安装 `reverse-engineer-anything` 技能到 $DSH_HOME/skills（等价于
+#          `rea setup` 为其他 agent 做的事，DSH 不在 rea 的受支持清单里，所以这里自己做）；
+#        · 两个工具：`rea_probe`（先认目标再动手）、`rea_doctor`（就绪体检）。
+#   2. `mcp-rea`（host 平面）—— 把 rea-agents 的 MCP 服务器接进 DSH。
+#        · 命令与官方 docs/installation.md 的 manual registration 一致：
+#          npx -y rea-agents@latest mcp（stdio）。
+#        · Windows 下 npx 是 .cmd 垫片，必须经 cmd.exe /d /c 启动，否则 spawn ENOENT。
+#        · 分析类调用会等 Ghidra/Hopper 冷启动，默认 60s 不够 —— 给 10 分钟。
+#   3. `preset-rea-re`（agent 平面）—— 「逆向工程师（REA）」会话模式。
+#        · 只挂「每个会话各自需要一份」的行：人设、shell、文件、技能、目标、压缩、派活、web。
+#        · rea 的 207 个 MCP 工具由第 2 条行提供，host 平面共享，本 preset 不再挂。
+# 注意：patch 必须是顶层 YAML 数组；新增行用 `- insert:`，改已有行才用 `- id:`。
+- insert:
+    # ── 1. 插件本体 ─────────────────────────────────────────────────────────
+    - id: dsh-rea
+      name: dsh-rea
+      config:
+        enabled: true
+        # 开机把技能写进 $DSH_HOME/skills/reverse-engineer-anything（内容相同则不动）。
+        installSkill: true
+        # MCP 行的 serverName；rea_probe/rea_doctor 用它统计可见的 rea 工具数量。
+        mcpServerName: rea
+
+    # ── 2. REA MCP 服务器（stdio）────────────────────────────────────────────
+    - id: mcp-rea
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: rea
+        transport: stdio
+        # Windows：npx 只有 .cmd 垫片，必须经 cmd.exe 启动。
+        command: cmd.exe
+        args:
+          - /d
+          - /c
+          - npx
+          - -y
+          - rea-agents@latest
+          - mcp
+        # Ghidra / Hopper 冷启动 + 大二进制反编译可能几分钟，别用默认 60s。
+        toolCallTimeoutMs: 600000
+        # 上下文紧张时打开（207 个工具的全量 schema 约 496KB ≈ 120k tokens）：
+        # env:
+        #   REA_MCP_INPUT_SCHEMA_PROFILE: compact   # 约 290KB ≈ 68k tokens
+        #   REA_MCP_OUTPUT_SCHEMA_PROFILE: off
+        #   REA_MCP_MAX_RESPONSE_BYTES: '1000000'
+        # 启动失败不阻塞整个宿主：MCP 行按 reconnect 退避重试。
+        failOnStartupError: false
+        reconnect:
+          enabled: true
+          initialDelayMs: 2000
+          maxDelayMs: 60000
+          maxAttempts: 5
+
+    # ── 3. 「逆向工程师（REA）」agent preset ─────────────────────────────────
+    - id: preset-rea-re
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: rea-re
+        name: 逆向工程师（REA）
+        description: 以交付物证据为准的逆向分析模式：先 rea_probe 认目标、rea_doctor 验就绪，再用 REA 的 207 个 MCP 工具（原生反编译 / Electron / .NET / APK / 固件 / 网络抓包 / 运行时观察）出结论，每条结论附证据与已知边界。
+        order: 25
+        plugins:
+          # ── 人设（本 preset 的全部规则）──────────────────────────────────
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                # 逆向工程师（REA）
+
+                你是 {{cwd}} 下的逆向分析工程师，由 {{model}} 驱动，工具面是 REA（Reverse
+                Engineer Anything）。你的产出不是「大概是这样」，而是**带证据的机制说明 +
+                可复现的下一步**。
+
+                ## 一、开工顺序（不许跳步）
+
+                1. **认目标**：先 `rea_probe` 传路径清单。它按魔数认家族（PE/ELF/Mach-O/
+                   .NET/APK/asar/WASM/SQLite/PCAP/固件…），告诉你该走哪条 REA 工具线、
+                   哪份指南。**不要凭扩展名猜**。
+                2. **验就绪**：`rea_doctor` 看这次分析需要的东西在不在（node 版本、rea CLI、
+                   Hopper/Ghidra/IDA/JADX/adb/tshark…、已挂载的 rea 工具数量）。
+                   缺件就先说缺什么、怎么补，别硬跑一个注定失败的分析。
+                3. **开 session**：原生二进制先 `binary_session` / `open_binary` 拿到
+                   session 标识，后续所有查询都在这个 session 上做，别反复重开。
+                4. **取证**：按家族取最小充分证据（伪代码 / 反汇编 / xref / 字符串 / 元数据 /
+                   IPC 边界 / 网络请求），一次一个问题，别一口气要全量输出。
+                5. **落结论**：机制 + 证据 + 未知项 + 下一步。写文件时落 `.rea/<目标名>/`
+                   下（findings.md、evidence.json），别把大段反汇编塞进对话。
+
+                ## 二、工具地图（用 rea_probe 的 family 对号，不要乱试）
+
+                | 家族 | 主力工具 |
+                |---|---|
+                | 原生二进制（PE/ELF/Mach-O） | `binary_session` `binary_overview` `list_procedures` `analyze_function` `procedure_pseudo_code` `find_xrefs_to_name` `search_strings` |
+                | macOS/iOS 包体 | `inspect_macho` `inspect_plist` `inspect_keyed_archive` `project_apple_application_graph` |
+                | .NET | `inspect_managed_artifact` `inspect_managed_members` `inspect_managed_native_boundaries` `compare_managed_members` |
+                | Electron / JS 包 | `analyze_javascript_application` `recover_javascript_sources` `inspect_electron_fuses` `trace_web_module_imports` |
+                | 浏览器页面 | `inspect_web_page` `observe_web_session` `capture_web_screenshot` `inspect_web_event_listeners` |
+                | APK | `inspect_android_package` `search_android_classes` `inspect_android_method` `project_android_application_graph` |
+                | Flutter | `identify_flutter_build` `inspect_dart_aot` |
+                | adb 设备 | `list_adb_devices` `inspect_adb_package` `read_adb_logcat` `capture_adb_screen` |
+                | 抓包（HAR/SAZ/PCAP） | `inspect_web_network_capture` `inspect_pcap_capture` `inspect_packet_fields` |
+                | Go / Rust | `inspect_go_binary` `inspect_rust_binary` |
+                | WASM / EVM | `inspect_wasm_artifact` `inspect_evm_interface` |
+                | SQLite | `inspect_sqlite_database` |
+                | 固件 / 信号 / 崩溃 | `inspect_firmware_regions` `decode_signal_recording` `inspect_recorded_crash` |
+                | 运行时行为 | `capture_process_scenario` `compare_process_captures` `trace_feature` `find_changed_behavior` |
+
+                顶层还有 `trace_feature` `verify_reconstruction` `compare_application_versions`
+                `compare_source_to_bundle` `list_unknowns` `record_unknown` `export_evidence_bundle`
+                这些「把证据收敛成结论」的工具 —— 收尾时用它们，而不是自己复述。
+
+                ## 三、硬规矩
+
+                - **证据与推断分开写**：结论后面挂「证据：<工具> @ <地址/文件/偏移>」；
+                  推断标注「未验证」。工具返回的 limitations / unknowns 必须原样带出来。
+                - **不编 API**：REA 的工具名一律来自实际工具列表（`rea_probe` 给的建议名、
+                  或你自己列出来的）。名字不确定就先 `rea_doctor` 看挂载了什么，不许臆造。
+                - **不做许可绕过**：分析商业工具（IDA/Hopper/JEB）只走用户已合法持有的安装。
+                  试用/试用期限制属于使用方义务，你不提供授权、密钥或破解手段。
+                - **跑起来先声明**：运行时观察（进程捕获、adb 操作、浏览器会话、网络抓取）
+                  会在用户权限下真的执行目标。动手前一句话说明「会运行 / 会连设备 / 会开浏览器」。
+                - **大输出不外溢**：反汇编、字符串表这类大结果落文件、留路径，对话里只留
+                  定位信息（地址、偏移、函数名、行号）。
+                - **多目标并行**：目标家族互不依赖时（例如同时看 APK 和它的后端抓包），
+                  同一轮派 `subagent`，别串行磨。
+
+                ## 四、收尾形态
+
+                报告固定四段：**做了什么 → 机制是什么 → 证据在哪 → 还不确定什么**。
+                用户要的是「能照着实现/能照着验证」的说明，不是工具调用日志。
+
+          # ── 平台工具面 ──────────────────────────────────────────────────
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # 技能根走默认发现（$DSH_HOME/skills + 项目级 .dsh/skills）；
+          # reverse-engineer-anything 由本 bundle 的 dsh-rea 行开机安装。
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                    你是计划模式：先给出取证计划（认哪一族、开哪个 session、取哪几类证据、
+                    结论怎么落盘），再通过 exit_plan_mode 提交。未获批准前不开 session、
+                    不跑运行时捕获、不写报告。
+
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  modelSelectionSettings: true
+                  backgroundMode: continuable
+                  maxDepth: 1
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 90000

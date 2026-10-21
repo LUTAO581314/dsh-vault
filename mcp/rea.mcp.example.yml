@@ -1,0 +1,29 @@
+# 手写 MCP 连接样例：rea
+# 注意：装 plugins/dsh-rea 后这行由插件自己 insert，不需要手抄；
+# 这份是给「只想要 MCP、不要插件」或「照样子加别的 server」用的。
+#
+# 换成你自己的 node 绝对路径：
+#   (Get-Command node).Source        → C:\Program Files\nodejs\node.exe
+# 换成 rea 的 mcp 入口（npx 装的包在 ~/.npm/_npx/<hash>/node_modules/rea-agents/）
+# 更省事的写法是把 command 设成 npx、args: ['-y', 'rea-agents@latest', 'mcp']，
+# 代价是每次启动多一次网络解析，冷启动慢。
+
+- insert:
+    - id: mcp-rea
+      name: '@deepseek-ai/dsh-mcp-client'
+      inject: [tools]
+      config:
+        serverName: rea
+        transport: stdio
+        command: 'C:\Program Files\nodejs\node.exe'
+        args:
+          - 'C:\Users\lt\AppData\Local\npm-cache\_npx\<HASH>\node_modules\rea-agents\dist\mcp-entry.js'
+        env: {}
+        toolCallTimeoutMs: 180000
+        failOnStartupError: false
+        maxInstructionBytes: 32768
+        reconnect:
+          enabled: true
+          initialDelayMs: 500
+          maxDelayMs: 30000
+          maxAttempts: 10
