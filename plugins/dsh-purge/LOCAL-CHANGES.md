@@ -7,6 +7,9 @@ patch 是否已应用 → `ERR_PNPM_PATCH_FAILED`，整条安装回滚（连累�
 
 处置：把 **已经打好 patch 的那份实体**固化为独立包，不再依赖 pnpm 的 patch 机制。
 
+> 上游不可达的原始取证（404 表格、四条通道逐条实测）在 [VENDOR.md](VENDOR.md)；
+> 本文只记「我改了什么」。两份文件分工：VENDOR.md = 为什么留档，本文 = 改了什么 + 怎么退。
+
 ## 改动清单
 
 ### 1. 包元数据（`package.json`）
