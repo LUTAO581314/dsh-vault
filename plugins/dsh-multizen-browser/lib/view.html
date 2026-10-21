@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MultiZen 浏览器</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column;
+    background: #16161c; color: #d8d8e0;
+    font: 12px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    overflow: hidden;
+  }
+  .bar {
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 8px; background: #1e1e26; border-bottom: 1px solid #2c2c38;
+    flex: 0 0 auto;
+  }
+  .bar button {
+    width: 26px; height: 26px; flex: 0 0 auto;
+    display: grid; place-items: center;
+    background: #26262f; color: #c8c8d4; border: 1px solid #33333f;
+    border-radius: 5px; cursor: pointer; font-size: 14px; line-height: 1;
+    transition: background .12s, color .12s;
+  }
+  .bar button:hover { background: #31313d; color: #fff; }
+  .bar button:active { background: #3a3a48; }
+  .bar button:disabled { opacity: .35; cursor: default; }
+  #url {
+    flex: 1 1 auto; min-width: 0; height: 26px;
+    padding: 0 9px; background: #12121a; color: #e6e6f0;
+    border: 1px solid #33333f; border-radius: 5px;
+    font: inherit; outline: none;
+  }
+  #url:focus { border-color: #4d6bfe; box-shadow: 0 0 0 2px rgba(77,107,254,.18); }
+  #go { width: auto; padding: 0 10px; font-size: 12px; }
+  #status {
+    flex: 0 0 auto; max-width: 38%; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: #7a7a8c; font-size: 11px;
+  }
+  #status.live { color: #46c46e; }
+  #status.dead { color: #e2564a; }
+  .stage {
+    position: relative; flex: 1 1 auto; min-height: 0;
+    display: grid; place-items: center; overflow: hidden;
+    background: #0d0d12;
+  }
+  #cv {
+    display: block; max-width: 100%; max-height: 100%;
+    cursor: default; image-rendering: auto;
+    background: #0d0d12;
+  }
+  #cv:active { cursor: grabbing; }
+  #hint {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    padding: 24px; text-align: center; color: #6b6b7d; font-size: 13px;
+    pointer-events: none; white-space: pre-wrap; line-height: 1.7;
+  }
+  #hint.gone { display: none; }
+  #hint b { color: #9a9aad; font-weight: 600; }
+  #hint code {
+    display: block; margin-top: 8px; padding: 7px 10px; max-width: 460px;
+    background: #1a1a22; border: 1px solid #2a2a36; border-radius: 6px;
+    color: #8f8fa4; font-size: 11px; text-align: left; overflow-wrap: anywhere;
+  }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <button id="back" title="后退">‹</button>
+    <button id="fwd" title="前进">›</button>
+    <button id="reload" title="刷新">⟳</button>
+    <input id="url" spellcheck="false" autocomplete="off" placeholder="输入地址后回车">
+    <button id="go" title="前往">前往</button>
+    <span id="status">连接中…</span>
+  </div>
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div id="hint">正在连接 MultiZen …</div>
+  </div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d', { alpha: false });
+  const urlBar = $('url'), statusEl = $('status'), hint = $('hint');
+
+  const params = new URLSearchParams(location.search);
+  const wanted = params.get('url') || '';
+  const target = params.get('target') || '';
+  if (wanted) urlBar.value = wanted;
+
+  let ws = null;
+  let vw = 0, vh = 0;          // page CSS viewport (logical coordinates)
+  let fw = 0, fh = 0;          // frame pixel size (what the canvas holds)
+  let drawing = false, queued = null;
+  let retry = 0;
+
+  const setStatus = (text, cls) => {
+    statusEl.textContent = text;
+    statusEl.className = cls || '';
+  };
+  const showHint = html => { hint.innerHTML = html; hint.classList.remove('gone'); };
+  const hideHint = () => { hint.classList.add('gone'); };
+
+  /* ---- rendering ------------------------------------------------------- */
+  function paint(frame) {
+    if (drawing) { queued = frame; return; }
+    drawing = true;
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth !== fw || img.naturalHeight !== fh) {
+        fw = cv.width = img.naturalWidth;
+        fh = cv.height = img.naturalHeight;
+      }
+      ctx.drawImage(img, 0, 0, fw, fh);
+      drawing = false;
+      if (queued) { const f = queued; queued = null; paint(f); }
+    };
+    img.onerror = () => {
+      drawing = false;
+      if (queued) { const f = queued; queued = null; paint(f); }
+    };
+    img.src = 'data:image/jpeg;base64,' + frame;
+  }
+
+  /* ---- coordinate mapping ---------------------------------------------- */
+  function toPage(ev) {
+    const r = cv.getBoundingClientRect();
+    if (!r.width || !r.height) return { x: 0, y: 0 };
+    const w = vw || fw || r.width;
+    const h = vh || fh || r.height;
+    return {
+      x: Math.round((ev.clientX - r.left) / r.width * w),
+      y: Math.round((ev.clientY - r.top) / r.height * h),
+    };
+  }
+
+  const send = payload => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+  };
+
+  /* ---- socket ---------------------------------------------------------- */
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const qs = new URLSearchParams();
+    if (wanted) qs.set('url', wanted);
+    if (target) qs.set('target', target);
+    const url = proto + '//' + location.host + '/multizen-cdp' + (qs.toString() ? '?' + qs : '');
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      retry = 0;
+      setStatus('已连接', 'live');
+    };
+
+    ws.onmessage = ev => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      switch (msg.t) {
+        case 'ready':
+          vw = msg.vw || 0; vh = msg.vh || 0;
+          hideHint();
+          setStatus('MultiZen 已接管', 'live');
+          break;
+        case 'meta':
+          vw = msg.vw || vw; vh = msg.vh || vh;
+          break;
+        case 'frame':
+          hideHint();
+          paint(msg.d);
+          break;
+        case 'url':
+          if (document.activeElement !== urlBar) urlBar.value = msg.url || '';
+          if (!msg.url || msg.url === 'about:blank') setStatus('空白页', '');
+          break;
+        case 'error':
+          setStatus('连接失败', 'dead');
+          showHint('<b class="bad">连不上 MultiZen</b>' + esc(msg.message || '') +
+            '<code>先启动 MultiZen 桌面应用，并在其中打开一个窗口（launch_profile）。</code>');
+          break;
+        case 'closed':
+          setStatus('已断开', 'dead');
+          break;
+      }
+    };
+
+    ws.onclose = () => {
+      setStatus('已断开', 'dead');
+      if (retry < 40) {
+        retry += 1;
+        setTimeout(connect, Math.min(8000, 500 * retry));
+      }
+    };
+    ws.onerror = () => setStatus('连接出错', 'dead');
+  }
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  /* ---- input forwarding ------------------------------------------------ */
+  cv.addEventListener('mousedown', ev => {
+    const p = toPage(ev);
+    send({ t: 'click', x: p.x, y: p.y, button: ev.button });
+  });
+
+  cv.addEventListener('contextmenu', ev => ev.preventDefault());
+
+  cv.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const p = toPage(ev);
+    send({ t: 'wheel', x: p.x, y: p.y, dx: Math.round(ev.deltaX), dy: Math.round(ev.deltaY) });
+  }, { passive: false });
+
+  document.addEventListener('keydown', ev => {
+    if (ev.target === urlBar) return;
+    const special = ['Enter', 'Backspace', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'];
+    if (ev.key.length === 1 || special.includes(ev.key)) {
+      ev.preventDefault();
+      send({
+        t: 'key', kind: 'down', key: ev.key, code: ev.code,
+        keyCode: ev.keyCode, text: ev.key.length === 1 ? ev.key : '',
+      });
+    }
+    if (ev.key.length === 1 || special.includes(ev.key)) {
+      setTimeout(() => send({ t: 'key', kind: 'up', key: ev.key, code: ev.code, keyCode: ev.keyCode }), 8);
+    }
+  });
+
+  document.addEventListener('paste', ev => {
+    if (ev.target === urlBar) return;
+    const text = ev.clipboardData?.getData('text');
+    if (text) { ev.preventDefault(); send({ t: 'text', text }); }
+  });
+
+  /* ---- toolbar --------------------------------------------------------- */
+  const go = () => {
+    let v = urlBar.value.trim();
+    if (!v) return;
+    if (!/^[a-z]+:\/\//i.test(v)) v = /^[\w-]+(\.[\w-]+)+/.test(v) ? 'https://' + v : 'https://' + v;
+    send({ t: 'nav', url: v });
+    cv.focus();
+  };
+  $('go').addEventListener('click', go);
+  urlBar.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); go(); } });
+  $('back').addEventListener('click', () => send({ t: 'back' }));
+  $('fwd').addEventListener('click', () => send({ t: 'forward' }));
+  $('reload').addEventListener('click', () => send({ t: 'reload' }));
+
+  connect();
+})();
+</script>
+</body>
+</html>

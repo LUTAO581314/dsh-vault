@@ -1,0 +1,56 @@
+diff --git a/cordis.patch.yml b/cordis.patch.yml
+index cecf56e..bcd7285 100644
+--- a/cordis.patch.yml
++++ b/cordis.patch.yml
+@@ -28,7 +28,7 @@
+   config:
+     includeHarnessIdentity: false
+     personaPrefix: ""
+-    personaSuffix: Your working directory is {{cwd}}.
++    personaSuffix: ""
+ 
+ - id: dsh-purge
+   inject: [systemPrompt, tools]
+diff --git a/lib/identity.js b/lib/identity.js
+index 43d31a5..9a499a2 100644
+--- a/lib/identity.js
++++ b/lib/identity.js
+@@ -215,7 +215,10 @@ function looksLikeOfficialIdentity(text) {
+ }
+ 
+ /** 关掉官方身份，只留工作目录。红队操作稿在 prefix 里时不动。 */
+-function overlayOfficialIdentity(sections) {
++function overlayOfficialIdentity(sections, variables = {}) {
++  // Modern hosts own cwd via required working-directory:current runtime context.
++  // Only legacy hosts that actually register cwd may interpolate this template.
++  const cwdSuffix = Object.hasOwn(variables, "cwd") ? CWD_ONLY_SUFFIX : "";
+   const list = Array.isArray(sections) ? sections : [];
+   const out = [];
+   let sawSuffix = false;
+@@ -233,7 +236,7 @@ function overlayOfficialIdentity(sections) {
+       sawSuffix = true;
+       const raw = String(section.text || "");
+       if (!raw.trim() || looksLikeOfficialIdentity(raw) || isCwdOnlyText(raw)) {
+-        out.push({ ...section, text: CWD_ONLY_SUFFIX });
++        out.push({ ...section, text: cwdSuffix });
+       } else {
+         out.push(section);
+       }
+@@ -244,7 +247,7 @@ function overlayOfficialIdentity(sections) {
+   if (!sawSuffix) {
+     out.push({
+       name: "deployment:persona-suffix",
+-      text: CWD_ONLY_SUFFIX,
++      text: cwdSuffix,
+       order: 10200,
+     });
+   }
+@@ -749,7 +752,7 @@ export function rewritePromptAssembly(assembled, fallbackInject = "", options =
+     const withOps = attachRedteamOpsOnly(sections);
+     sections = insertRoleSection(insertCardSection(withOps, opts.cardText), opts.roleText);
+   }
+-  const body = overlayOfficialIdentity(sanitizeAssemblySections(sections));
++  const body = overlayOfficialIdentity(sanitizeAssemblySections(sections), assembled.variables);
+   const folded = foldInjectIntoPersona(body, injectText);
+   const tail = [];
+   if (String(protocol || "").trim()) {

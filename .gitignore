@@ -13,3 +13,7 @@ desktop.ini
 # 本地草稿
 .scratch/
 *.local
+
+# 同步脚本产物
+logs/
+redteam/pocs/.nuclei-index.json

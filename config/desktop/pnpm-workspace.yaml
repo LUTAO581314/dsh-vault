@@ -1,0 +1,41 @@
+packages:
+  - .
+
+nodeLinker: hoisted
+autoInstallPeers: false
+# 2026-10-20：用户拍板「我选择安装就应该放行」——git/tarball 依赖的 prepare/build
+# 脚本不再逐条点名，全部放行。allowBuilds 里的条目保留（换回严格模式时直接删本行即可）。
+dangerouslyAllowAllBuilds: true
+
+allowBuilds:
+  cpu-features: true
+  ssh2: true
+  cpu-features@0.0.10: true
+  ssh2@1.17.0: true
+  protobufjs: true
+  protobufjs@7.6.6: true
+  "dsh-market-watch@https://codeload.github.com/JohnXu22786/market-watch/tar.gz/9f5bccbe8e49f8279e526c84b0b21f021d7ff31c": true
+  dsh-market-watch: true
+
+patchedDependencies:
+  dsh-agent-board@1.8.1: patches/dsh-agent-board@1.8.1.patch
+  # 2026-10-21：dsh-purge 上游仓库 YuJunZhiXue/dsh-purge 已不可达（archive tarball 404），
+  # 安装时 pnpm 拿不到原始文件 → ERR_PNPM_PATCH_FAILED，整条安装回滚。
+  # 处置：把已打好 patch 的实体复制成本地包（workspace/vendor/dsh-purge），
+  # package.json 改成 link: 引用，patch 本身随副本一起保留，故此处停用这条 patchedDependencies。
+  # 位置：C:\Users\lt\Documents\deepseek-harness\default-workspace\vendor\dsh-purge
+  # dsh-purge@1.1.71: patches/dsh-purge@1.1.71.patch
+
+# ── 网络参数（2026-10-20 优化）────────────────────────────────────────────────
+# 本机出口是移动链路（USB RNDIS 共享 / 热点），装包实测：
+#   - GET registry.npmjs.org/... error (ECONNRESET)，每次重试空等 10s
+#   - 单个元数据请求 16282ms / 16176ms
+#   - tarball 速度 3–13 KiB/s（pnpm 阈值 50 KiB/s），一次安装 58.3s
+# 这不是 pnpm 的 bug，是链路抖动。加大重试预算、降低并发来兜住；
+# registry 保持官方源，避免换源导致 lockfile 解析漂移。
+# 注意：pnpm 11 的工程级配置读 pnpm-workspace.yaml，不读工程目录的 .npmrc。
+fetchRetries: 5
+fetchRetryMintimeout: 10000
+fetchRetryMaxtimeout: 120000
+fetchTimeout: 120000
+networkConcurrency: 8

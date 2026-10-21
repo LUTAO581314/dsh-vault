@@ -1,0 +1,19 @@
+{
+  "name": "dsh-multizen-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH sidebar browser backed by the MultiZen fingerprint browser (CDP screencast instead of a sandboxed iframe)",
+  "type": "module",
+  "main": "lib/index.js",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

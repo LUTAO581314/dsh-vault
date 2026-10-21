@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>MZ Test Page</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; }
+  #out, #formout { font-family: ui-monospace, monospace; background: #f2f2f2; padding: 4px 8px; display: inline-block; }
+  .hoverbox { width: 220px; padding: 10px; background: #dde8ff; border: 1px solid #9bb; }
+  .menu { display: none; margin-top: 8px; padding: 6px; background: #cfe; }
+  .hoverbox:hover .menu { display: block; }
+  .clicked { background: #8d8 !important; }
+  #tall { height: 2400px; margin-top: 20px; background: linear-gradient(180deg, #fff 0%, #446 100%); }
+</style>
+
+<h1>MZ Test Page</h1>
+
+<button id="btn" onclick="document.getElementById('out').textContent='clicked-once'; this.classList.add('clicked')">Press Me</button>
+<p><span id="out">idle</span></p>
+
+<form onsubmit="event.preventDefault(); document.getElementById('formout').textContent='submitted:' + this.q.value;">
+  <p><input name="q" id="q" placeholder="type here" /></p>
+  <p>
+    <select id="sel" name="sel">
+      <option value="a">Alpha</option>
+      <option value="b">Beta</option>
+      <option value="c">Gamma</option>
+    </select>
+  </p>
+  <button type="submit" id="submit">Submit Form</button>
+</form>
+<p><span id="formout">-</span></p>
+
+<div class="hoverbox">
+  Hover Me
+  <div class="menu">MENU-VISIBLE</div>
+</div>
+
+<div id="tall">scroll region</div>

@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "phase": "registered",
+  "skillsDir": "C:\\Users\\lt\\.dsh\\redteam\\skills",
+  "presetDir": "C:\\Users\\lt\\.dsh\\.agent-presets\\redteam",
+  "at": "2026-10-21T13:48:51.055Z",
+  "id": "redteam",
+  "name": "红队模式",
+  "plugins": 19,
+  "broken": null,
+  "tries": 1
+}
