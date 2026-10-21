@@ -1,0 +1,56 @@
+{
+  "name": "dsh-preset-studio",
+  "version": "0.39.0",
+  "description": "DSH Agent 预设工作室：可视化编辑 preset、系统提示词模块化、插件与 skill 按需启用",
+  "license": "MIT",
+  "type": "module",
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "preset",
+    "system-prompt",
+    "skill"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.1-rc.2"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.5",
+    "js-yaml": "4.1.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings-general"
+      ]
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.1-rc.2": "compatible"
+      }
+    }
+  }
+}

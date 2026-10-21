@@ -1,0 +1,4 @@
+# 把工作室的 host 半挂到 profile 根层
+- insert:
+    - id: preset-studio
+      name: 'dsh-preset-studio'
