@@ -19,7 +19,7 @@
 | [`plugins/dsh-purge/`](plugins/dsh-purge/) | 破甲插件（清洗提示词 + 审批/沙箱绕过 + 红队演练台），**上游 404 后的本地修复版** | 已装，62/70 补丁 applied |
 | [`plugins/dsh-rea/`](plugins/dsh-rea/) | REA（Reverse Engineer Anything）接入：注册 `rea` MCP、装技能、加 `rea_probe` / `rea_doctor` 路由工具 | 已装，MCP 暴露 207 个工具 |
 | [`plugins/dsh-multizen-browser/`](plugins/dsh-multizen-browser/) | 自研侧边栏浏览器插件（MultiZen CDP screencast，替代沙箱 iframe） | 0.1.0，只此一份 |
-| [`plugins/dsh-preset-studio/`](plugins/dsh-preset-studio/) | 自研「Agent 预设工作室」：接管设置页的预设页，可视化改 preset 插件面 / 系统提示词模块 / skill 开关 | 0.39.0，待发市场 |
+| [`plugins/dsh-agent-preset-editor/`](plugins/dsh-agent-preset-editor/) | 自研「预设编辑器」（npm 名 dsh-agent-preset-editor）：接管设置页的预设页，可视化改 preset 插件面 / 系统提示词模块 / skill 开关 | 0.59.0，待发市场 |
 | [`mcp/multizen/`](mcp/multizen/) | 自建 MCP server（`server.mjs`，stdio → MultiZen 22 个工具） | 被 `cordis.patch.yml` 直接引用 |
 | [`mcp/`](mcp/) | MCP 连接样例与踩坑记录 | — |
 | [`skills/reverse-engineer-anything/`](skills/reverse-engineer-anything/) | 逆向路由技能文本（native / .NET / Electron / APK / 固件 / 浏览器） | 已装到 `~/.dsh/skills` |

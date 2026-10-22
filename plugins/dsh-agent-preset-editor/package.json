@@ -1,6 +1,6 @@
 {
-  "name": "dsh-preset-studio",
-  "version": "0.39.0",
+  "name": "dsh-agent-preset-editor",
+  "version": "0.59.0",
   "description": "DSH Agent 预设工作室：可视化编辑 preset、系统提示词模块化、插件与 skill 按需启用",
   "license": "MIT",
   "type": "module",
@@ -25,6 +25,7 @@
   "files": [
     "index.js",
     "client.js",
+    "gate.js",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
@@ -52,5 +53,9 @@
         "0.2.1-rc.2": "compatible"
       }
     }
+  },
+  "scripts": {
+    "test": "node test/pure.test.mjs",
+    "prepack": "node test/pure.test.mjs"
   }
 }
