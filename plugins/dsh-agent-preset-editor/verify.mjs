@@ -45,18 +45,27 @@ function expand(template, values) {
   return template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? ''));
 }
 
-// ---- 1. 单元测试 ----
+// ---- 1. 测试（纯函数 + 渲染冒烟）----
+const TEST_FILES = ["test/pure.test.mjs", "test/render.mjs"];
+
 function stepTests() {
-  const run = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['test'], {
-    cwd: here,
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-  });
-  const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
-  const matched = /(\d+) passed, (\d+) failed/.exec(output);
-  if (matched === null) return record(false, '单元测试', '输出里没有统计行');
-  const failed = Number(matched[2]);
-  return record(failed === 0, '单元测试', `${matched[1]} passed, ${failed} failed`);
+  let passed = 0;
+  let failed = 0;
+  const notes = [];
+  for (const file of TEST_FILES) {
+    const run = spawnSync(process.execPath, [path.join(here, file)], { cwd: here, encoding: "utf8" });
+    const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+    const matched = /(\d+) passed, (\d+) failed/.exec(output);
+    if (matched === null) {
+      const tail = output.trim().split(String.fromCharCode(10)).slice(-3).join(" ").slice(0, 160);
+      return record(false, "测试", `${file} 没跑出统计行：${tail}`);
+    }
+    passed += Number(matched[1]);
+    failed += Number(matched[2]);
+    if (run.status !== 0 && Number(matched[2]) === 0) failed += 1;
+    notes.push(`${path.basename(file)} ${matched[1]}`);
+  }
+  return record(failed === 0, "测试", `${passed} passed, ${failed} failed（${notes.join(" / ")}）`);
 }
 
 // ---- 2. 语法 ----

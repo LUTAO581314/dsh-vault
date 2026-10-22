@@ -118,9 +118,14 @@ dsh plugin --profile desktop remove dsh-agent-preset-editor
 ## 开发
 
 ```bash
-npm test         # 75 项断言：范围判定 / 官方段识别 / skill 解析 / catalog 过滤 / 段删除 / 导航接管 / 样式版本 / 防漂移
+npm test         # 103 项断言 = 纯函数 75 + 渲染冒烟 28
 node verify.mjs  # 发版前必跑：测试 → 语法 → 打包 → 装进 profile → 校验配置与日志里的崩溃签名
 ```
+
+`npm test` 跑两个文件：
+
+- `test/pure.test.mjs`（75 项）：范围判定 / 官方段识别 / skill 解析 / catalog 过滤 / 段删除 / 导航接管 / 样式版本 / 防漂移。纯函数，不碰 React。
+- `test/render.mjs`（28 项）：**不用 react-dom**，自己写了一个 40 行的迷你渲染器（`useState/useMemo/useEffect/useContext` 全部极简实现，真 React 只提供 `createElement`/`createContext`/`Component`），把 `client.js` 整段 bundle 在假环境里跑起来：apply → 注册 slot → 删官方条目 → 渲染列表页 → 点卡片进详情 → 点「检查 / 详细 / AI 检查」→ 返回再进一次。还带三条 harness 自检：组件抛错必须被报成「组件 X 渲染失败：原因」、**hook 条件调用必须被抓到**（React #300 的成因）、setState 不收敛必须报错。
 
 `prepack` 会自动跑测试，不通过打不了包。`verify.mjs` 额外检查三件测试覆盖不到的事：装进 profile 后版本对不对、`--dump-config` 里本插件那行在不在（且官方 `ui-agent-preset` 没被 `disabled`）、本次运行期间日志里有没有新增崩溃签名（`slot entry crashed` / `duplicate factory registration` / `is not defined`）。
 

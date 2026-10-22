@@ -1,6 +1,6 @@
 {
   "name": "dsh-agent-preset-editor",
-  "version": "0.61.0",
+  "version": "0.61.1",
   "description": "DSH Agent 预设工作室：可视化编辑 preset、系统提示词模块化、插件与 skill 按需启用",
   "license": "MIT",
   "type": "module",
@@ -55,8 +55,11 @@
     }
   },
   "scripts": {
-    "test": "node test/pure.test.mjs",
+    "test": "node test/pure.test.mjs && node test/render.mjs",
     "verify": "node verify.mjs",
-    "prepack": "node test/pure.test.mjs"
+    "prepack": "node test/pure.test.mjs && node test/render.mjs"
+  },
+  "devDependencies": {
+    "react": "^18.3.1"
   }
 }
