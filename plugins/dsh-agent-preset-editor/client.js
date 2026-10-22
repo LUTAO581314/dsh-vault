@@ -350,13 +350,11 @@ window.__ModuleLoader__.load({
 
     /** 官方那条「Agent 预设」在 settings.section 里的登记 id（来自 dsh-client-ui-agent-preset）。 */
     const OFFICIAL_ENTRY_ID = 'agent-presets';
-    /** 官方那条不存在（别的 DSH 版本）时我们自己登记用的 priority：比官方的 0 低，同一 cell 渲染时我们胜出。 */
-    const OURS_PRIORITY = -1;
 
     /**
      * 取 settings.section 的登记记录（SlotCore 内部那条 rec）。
-     * `records` 是 SlotCore 的公开类字段（dsh-client-ui-slots/lib/index.js:48）；
-     * 拿不到说明这道门关着，调用方退回「自己注册一条 + 读取时过滤」。
+     * `records` 是 SlotCore 的公开类字段（dsh-client-ui-slots/lib/index.js:48）。
+     * 拿不到就什么都不做——**绝不另注册一条顶上**：那等于又造了第二个「Agent 预设」。
      * @param slots slots 服务
      */
     function settingsSectionRecord(slots) {
@@ -370,15 +368,15 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 官方那条登记（同 id、priority 不是我们的 -1）。
+     * 官方那条登记。同一个 id 只会有一条——我们不注册，所以登记表里如果有，
+     * 那一定是官方插件放的。
      * @param slots slots 服务
      */
     function officialEntryOf(slots) {
       const record = settingsSectionRecord(slots);
       if (record === null) return null;
       for (const entry of record.entries) {
-        if (entry?.options?.id !== OFFICIAL_ENTRY_ID) continue;
-        if ((entry.options.priority ?? 0) !== OURS_PRIORITY) return entry;
+        if (entry?.options?.id === OFFICIAL_ENTRY_ID) return entry;
       }
       return null;
     }
@@ -386,24 +384,26 @@ window.__ModuleLoader__.load({
     /**
      * 直接改官方那条：把它的渲染体和侧栏文案换成我们的。
      *
-     * 不删条目、不藏、也不会出现两条——侧栏读的就是这一条，只是它的渲染体已经是我们的页面。
+     * 不删条目、不藏、也不另建一条——侧栏读的就是这一条，只是它的渲染体已经是我们的页面。
      * 渲染器每次渲染都重新读 `entry.component`（`dsh-client-ui-renderer/lib/client.js` 的
      * `const Comp = entry.component`，list 槽在 :814/:821/:885 三处），所以改完 markDirty 一次即可。
      * 原始字段存在 `entry.__psxOriginal` 里，插件卸载时还原。
      * @param slots slots 服务
      * @param component 我们的设置页组件
      * @param label 侧栏文案（返回字符串的函数，和官方那条同形）
-     * @returns 'taken' 改好了 | 'absent' 官方那条不在 | 'no-ledger' 登记表读不到
+     * @returns 'taken' 改好了 | 'absent' 官方那条还没注册 | 'no-ledger' 登记表读不到
      */
     function takeOverOfficialEntry(slots, component, label) {
+      const record = settingsSectionRecord(slots);
+      if (record === null) return 'no-ledger';
       const entry = officialEntryOf(slots);
-      if (entry === null) return settingsSectionRecord(slots) === null ? 'no-ledger' : 'absent';
+      if (entry === null) return 'absent';
       if (entry.component === component) return 'taken';
       if (entry.__psxOriginal === undefined) entry.__psxOriginal = { component: entry.component, label: entry.options.label };
       entry.component = component;
       entry.options.label = label;
       try {
-        slots.markDirty?.('settings.section', settingsSectionRecord(slots));
+        slots.markDirty?.('settings.section', record);
       } catch {
         /* 通知失败无妨：下一次登记表变动会带上 */
       }
@@ -430,109 +430,18 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 强制设置页导航重算一次 rows——只在「读取过滤」兜底路径里需要。
-     * 导航的 getSnapshot 只在 `getVersion("settings.section")` 变化时重算并缓存，
-     * 接管与真删这两条路自己会 markDirty，这里不必掺和。
-     * @returns 是否成功（插槽未声明等情况下为 false）
-     */
-    function forceNavRefresh(slots) {
-      let off;
-      try {
-        off = slots.register(
-          { name: 'settings.section', id: '__psx_refresh__', order: 1e9, priority: -1, label: '' },
-          () => null,
-        );
-      } catch {
-        return false;
-      }
-      try {
-        off();
-      } catch {
-        /* 释放失败也无害：临时条目 label 为空、order 最大 */
-      }
-      return true;
-    }
-
-    /**
-     * 兜底：登记表拿不到时，从读到的条目里滤掉官方那条。
+     * 接管设置页的「Agent 预设」那一格——**只有一条路：改官方那条**。
      *
-     * 设置页导航读的是 `entries()`（不按 id 去重），框架里的 `entriesOfSlot()` 才做 cell
-     * 去重，而导航没用它——只能在我们这层挡掉。只认 id === 'agent-presets' 且
-     * priority !== -1 的条目（我们是 -1，官方是 0）。
-     * @param list 原始条目数组
-     * @returns 过滤后的数组；若滤空（我们自己的还没注册上）则原样返回，入口不会消失
-     */
-    function filterSettingsEntries(list) {
-      const filtered = Array.prototype.filter.call(
-        list,
-        (entry) => !(entry?.options?.id === 'agent-presets' && (entry.options.priority ?? 0) !== -1),
-      );
-      return filtered.length === 0 ? list : filtered;
-    }
-
-    /**
-     * 兜底安装：把 `entries()` 的读取结果过滤掉官方那条，并造一次导航重算。
-     * @param slots slots 服务
-     * @param hadOfficial 挂补丁之前官方那条是否已经在
-     * @returns { via: 'filter'|null, why, dispose }
-     */
-    function installReadFilter(slots, hadOfficial) {
-      const proto = Object.getPrototypeOf(slots);
-      const candidates = [];
-      if (proto !== null && proto !== undefined && typeof proto.entries === 'function') candidates.push([proto, 'prototype']);
-      if (typeof slots.entries === 'function') candidates.push([slots, 'instance']);
-      const applied = [];
-      let why = 'no-writable-entries';
-      for (const [target, label] of candidates) {
-        const descriptor = Object.getOwnPropertyDescriptor(target, 'entries');
-        const original = descriptor?.value ?? target.entries;
-        if (typeof original !== 'function') continue;
-        try {
-          Object.defineProperty(target, 'entries', {
-            configurable: true,
-            writable: true,
-            value: function entries(key) {
-              const all = original.call(this, key);
-              return key === 'settings.section' ? filterSettingsEntries(all) : all;
-            },
-          });
-          applied.push({ target, original });
-          break;
-        } catch (error) {
-          why = `${label}-failed: ${String(error?.message ?? error)}`;
-        }
-      }
-      if (applied.length === 0) return { via: null, why, dispose: () => {} };
-      // 官方条目此刻已经在了 → 不会有 register 再替我们 bump version，自己造一次。
-      if (hadOfficial) forceNavRefresh(slots);
-      return {
-        via: 'filter',
-        why,
-        dispose: () => {
-          for (const { target, original } of applied) {
-            try {
-              Object.defineProperty(target, 'entries', { configurable: true, writable: true, value: original });
-            } catch {
-              /* 还原失败就保持现状 */
-            }
-          }
-        },
-      };
-    }
-
-    /**
-     * 接管设置页的「Agent 预设」那一格。
-     *
-     * 首选「改官方那条」：官方插件是 DSH 自带的静态插件，删不掉也禁不掉（内置插件页 inject 了它），
-     * 但它的登记条目是活的——换渲染体最省事，条目还在，侧栏天然只有一条。
-     * 它比我们晚注册是常态，所以挂 `slots.onMutate` 盯着，官方一注册就当场改。
-     * 登记表读不到（代理挡了内部字段）时才退化成「自己注册一条 + 读 entries 时滤掉官方」。
+     * 官方插件是 DSH 自带的静态插件，删不掉也禁不掉（内置插件页 inject 了它），
+     * 但它的登记条目是活的：换渲染体最省事，条目还在、侧栏天然一条。
+     * 它总比我们晚注册，所以挂 `slots.onMutate` 盯着，它一出现就当场改；
+     * 改不上（还没注册 / 登记表读不到 / 抛错）就什么都不做，原因写进诊断。
      * @param slots slots 服务
      * @param componentOf 生成我们的设置页组件（每次调用给一个新的包装件）
-     * @returns { via, mode, why, ensure, dispose }
+     * @returns { mode, why, ensure, dispose }
      */
     function installSectionControl(slots, componentOf) {
-      if (slots === null || slots === undefined) return { via: null, mode: 'none', why: 'no-slots', ensure: () => {}, dispose: () => {} };
+      if (slots === null || slots === undefined) return { mode: 'none', why: 'no-slots', ensure: () => {}, dispose: () => {} };
       // 标记打在**原型**上：`ctx.slots` 每次可能是新代理，实例标记挡不住重复安装，
       // 重复安装会让 entries() 层层套娃，最终递归爆栈 → 设置页卡死（"设置入口未响应"）。
       // 原型是 Object.prototype 时不能往那儿写（会污染所有对象），退回实例。
@@ -541,25 +450,19 @@ window.__ModuleLoader__.load({
       if (host.__presetStudioSection !== undefined) return host.__presetStudioSection;
 
       const label = () => COPY.nav;
-      const state = { via: null, mode: 'none', why: 'pending', hadOfficial: false };
-      let ownOff = null;
-      let readFilter = null;
+      const state = { mode: 'none', why: 'pending' };
       let disposed = false;
       let busy = false;
+      let tookOver = false;
 
       const publish = () => {
         let hasOfficial = false;
-        let hasOurs = false;
         try {
-          for (const entry of slots.entries('settings.section')) {
-            if (entry?.options?.id !== OFFICIAL_ENTRY_ID) continue;
-            if ((entry.options.priority ?? 0) === OURS_PRIORITY) hasOurs = true;
-            else hasOfficial = true;
-          }
+          hasOfficial = officialEntryOf(slots) !== null;
         } catch {
           /* 读不到就报 false */
         }
-        const diag = { mode: state.mode, via: state.via, hasOfficial, hasOurs, why: state.why };
+        const diag = { mode: state.mode, via: state.mode === 'takeover' ? 'ledger' : null, hasOfficial, why: state.why };
         try {
           window.__presetStudioDiag = diag;
         } catch {
@@ -568,84 +471,34 @@ window.__ModuleLoader__.load({
         return diag;
       };
 
-      const ownRegister = (component) => {
-        if (ownOff !== null) return true;
-        try {
-          ownOff = slots.register({ name: 'settings.section', id: OFFICIAL_ENTRY_ID, order: 20, priority: OURS_PRIORITY, label }, component);
-          state.via = 'ledger';
-          state.mode = 'own';
-          return true;
-        } catch (error) {
-          state.mode = 'none';
-          state.via = null;
-          state.why = `register-failed: ${String(error?.message ?? error)}`;
-          return false;
-        }
-      };
-
       const ensure = () => {
-        // markDirty 会在 register() 内部同步回调进 onMutate → ensure()。
-        // 不挡这个重入，自己那条会在 ownOff 赋值完成之前被反复注册（真机会直接爆栈）。
+        // markDirty 会在 takeOver 内部同步回调进 onMutate → ensure()，挡一下重入。
         if (disposed || busy) return state;
         busy = true;
         try {
-          return runEnsure();
+          const component = componentOf();
+          let verdict;
+          try {
+            verdict = takeOverOfficialEntry(slots, component, label);
+          } catch (error) {
+            verdict = null;
+            state.mode = 'none';
+            state.why = `takeover-failed: ${String(error?.message ?? error)}`;
+          }
+          if (verdict === 'taken') {
+            tookOver = true;
+            state.mode = 'takeover';
+            state.why = 'taken-over';
+          } else if (verdict !== null) {
+            state.mode = 'none';
+            state.why = verdict === 'absent' ? 'official-not-registered-yet' : verdict;
+          }
+          publish();
+          return state;
         } finally {
           busy = false;
         }
       };
-
-      const runEnsure = () => {
-        const component = componentOf();
-        let verdict;
-        try {
-          verdict = takeOverOfficialEntry(slots, component, label);
-        } catch (error) {
-          state.mode = 'none';
-          state.via = null;
-          state.why = `takeover-failed: ${String(error?.message ?? error)}`;
-          publish();
-          return state;
-        }
-
-        if (verdict === 'taken') {
-          state.via = 'ledger';
-          state.mode = 'takeover';
-          state.why = 'taken-over';
-          if (typeof ownOff === 'function') {
-            try {
-              ownOff();
-            } catch {
-              /* 自己那条释放失败不影响接管 */
-            }
-            ownOff = null;
-          }
-          publish();
-          return state;
-        }
-
-        if (verdict === 'absent') {
-          if (ownRegister(component)) state.why = 'official-absent';
-          publish();
-          return state;
-        }
-
-        // no-ledger：内部结构不可见，只能自己注册一条 + 拦读取。
-        state.why = 'no-ledger';
-        if (ownRegister(component) && readFilter === null) {
-          readFilter = installReadFilter(slots, state.hadOfficial);
-          state.via = readFilter.via;
-          state.why = readFilter.why;
-        }
-        publish();
-        return state;
-      };
-
-      try {
-        state.hadOfficial = officialEntryOf(slots) !== null;
-      } catch {
-        state.hadOfficial = false;
-      }
 
       let off = null;
       try {
@@ -659,22 +512,15 @@ window.__ModuleLoader__.load({
         off = null;
       }
 
-      // 先自己试一次：官方那条在就当场接管；不在就先顶上。装不上的情况（slot 还没声明）
-      // 由 apply() 里 inject 回调再 ensure() 一次兜住。
+      // 先自己试一次：官方那条若已经在了，当场改掉。
       ensure();
 
       const result = {
-        get via() {
-          return state.via;
-        },
         get mode() {
           return state.mode;
         },
         get why() {
           return state.why;
-        },
-        get hadOfficial() {
-          return state.hadOfficial;
         },
         ensure,
         dispose: () => {
@@ -684,26 +530,12 @@ window.__ModuleLoader__.load({
           } catch {
             /* 退订失败无碍 */
           }
-          if (typeof ownOff === 'function') {
+          if (tookOver) {
             try {
-              ownOff();
+              restoreOfficialEntry(slots);
             } catch {
-              /* 释放失败无碍 */
+              /* 还原失败时保持接管状态，不影响卸载 */
             }
-            ownOff = null;
-          }
-          if (readFilter !== null) {
-            try {
-              readFilter.dispose();
-            } catch {
-              /* 还原失败无碍 */
-            }
-            readFilter = null;
-          }
-          try {
-            restoreOfficialEntry(slots);
-          } catch {
-            /* 还原官方那条失败时保持接管状态，不影响卸载 */
           }
           try {
             delete host.__presetStudioSection;
@@ -2008,8 +1840,7 @@ window.__ModuleLoader__.load({
                             const diag = window.__presetStudioDiag;
                             if (!diag) return '未执行（插件未激活或脚本未运行到）';
                             if (diag.mode === 'takeover') return '已接管官方那条：换的是它的渲染体，条目还在（侧栏只有一条）';
-                            if (diag.mode === 'own') return '官方那条不在，自己注册了一条';
-                            return `没接上（mode=${String(diag.mode ?? '—')}, official=${String(diag.hasOfficial)}, ours=${String(diag.hasOurs)}, via=${String(diag.via ?? '—')}, why=${String(diag.why ?? '—')}）`;
+                            return `没接上（mode=${String(diag.mode ?? '—')}, official=${String(diag.hasOfficial)}, why=${String(diag.why ?? '—')}）`;
                           } catch {
                             return '无法读取';
                           }
@@ -2089,7 +1920,7 @@ window.__ModuleLoader__.load({
             const diag = window.__presetStudioDiag;
             if (diag && diag.mode === 'none') {
               setShadowWarn(
-                `没接上官方那条「Agent 预设」：mode=${String(diag.mode ?? '—')}、官方条目 ${String(diag.hasOfficial)}、我们的条目 ${String(diag.hasOurs)}、通道 ${String(diag.via ?? '无')}、原因 ${String(diag.why ?? '—')}。这时点开看到的是官方旧界面。`,
+                `没接上官方那条「Agent 预设」：mode=${String(diag.mode ?? '—')}、官方条目 ${String(diag.hasOfficial)}、原因 ${String(diag.why ?? '—')}。这时点开看到的是官方旧界面。`,
               );
             } else {
               setShadowWarn(null);

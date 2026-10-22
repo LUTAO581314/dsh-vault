@@ -188,38 +188,16 @@ function ok(label, condition) {
   ok('两处 appliesTo 实现一致（防止逻辑漂移）', clientFn === hostFn);
 }
 
-// ---- client.js：设置页导航去重（两条「Agent 预设」的根因） ----
-{
-  const { filterSettingsEntries } = load(clientSrc, ['filterSettingsEntries']);
-  const official = { options: { id: 'agent-presets', priority: 0, label: 'Agent 预设' } };
-  const ours = { options: { id: 'agent-presets', priority: -1, label: 'Agent 预设' } };
-  const other = { options: { id: 'appearance', priority: 0 } };
-  const noPriority = { options: { id: 'agent-presets' } };
-
-  check('滤掉官方那条（priority 0）', filterSettingsEntries([official, ours, other]).map((e) => e.options.priority), [-1, 0]);
-  check('只留我们那条', filterSettingsEntries([official, ours]).length, 1);
-  check('省略 priority 视为 0，同样滤掉', filterSettingsEntries([noPriority, ours]).length, 1);
-  check('无关条目原样保留', filterSettingsEntries([other]).map((e) => e.options.id), ['appearance']);
-  ok('只剩官方一条时原样返回（自己还没注册上，入口不能消失）', (() => {
-    const list = [official];
-    return filterSettingsEntries(list) === list;
-  })());
-  ok('空数组原样返回', (() => {
-    const list = [];
-    return filterSettingsEntries(list) === list;
-  })());
-}
-
-// ---- client.js：接管官方那条（换它的渲染体，条目还在） ----
+// ---- client.js：直接改官方那条（不删条目、也不另建一条） ----
 {
   const { officialEntryOf, takeOverOfficialEntry, restoreOfficialEntry, settingsSectionRecord, installSectionControl } = load(
     clientSrc,
-    ['officialEntryOf', 'takeOverOfficialEntry', 'restoreOfficialEntry', 'settingsSectionRecord', 'installSectionControl', 'installReadFilter', 'forceNavRefresh', 'filterSettingsEntries'],
-    { OFFICIAL_ENTRY_ID: 'agent-presets', OURS_PRIORITY: -1, COPY: { nav: 'Agent 预设' } },
+    ['officialEntryOf', 'takeOverOfficialEntry', 'restoreOfficialEntry', 'settingsSectionRecord', 'installSectionControl'],
+    { OFFICIAL_ENTRY_ID: 'agent-presets', COPY: { nav: 'Agent 预设' } },
   );
 
   /** 造一个够用的 slots 假件：条目形状与 SlotCore 一致（{ component, options }）。 */
-  const fakeSlots = (entries, extra = {}) => {
+  const fakeSlots = (entries) => {
     const record = { entries, version: 0 };
     const calls = { markDirty: 0, registered: [] };
     const listeners = new Set();
@@ -246,96 +224,98 @@ function ok(label, condition) {
         listeners.add(fn);
         return () => listeners.delete(fn);
       },
-      ...extra,
     };
     return { slots, record, calls };
   };
   const makeOfficial = () => ({ component: () => null, options: { id: 'agent-presets', order: 20, label: () => 'Agent 预设' } });
-  const ours = { component: () => null, options: { id: 'agent-presets', priority: -1 } };
   const other = { component: () => null, options: { id: 'appearance', priority: 0 } };
   const ourComponent = () => null;
 
   {
     const official = makeOfficial();
-    const { slots } = fakeSlots([official, ours, other]);
+    const { slots } = fakeSlots([official, other]);
     ok('认得出官方那条', officialEntryOf(slots) === official);
-    ok('不把我们那条当官方', officialEntryOf(fakeSlots([ours]).slots) === null);
+    ok('没有官方那条时返回 null', officialEntryOf(fakeSlots([other]).slots) === null);
     ok('没登记表时返回 null', officialEntryOf({ entries: () => [] }) === null);
     ok('records 是空的也不崩', settingsSectionRecord({ records: new Map() }) === null);
+    ok('entries 不是数组时也当读不到', settingsSectionRecord({ records: new Map([['settings.section', {}]]) }) === null);
   }
 
   {
     const official = makeOfficial();
+    const original = official.component;
     const { slots, calls } = fakeSlots([official, other]);
     check('接管返回 taken', takeOverOfficialEntry(slots, ourComponent, () => 'Agent 预设'), 'taken');
     ok('渲染体换成了我们的', official.component === ourComponent);
-    ok('原件被记下来了', official.__psxOriginal.component !== ourComponent);
-    ok('文案也换成了我们的', official.options.label() === 'Agent 预设');
+    ok('原件被记下来了', official.__psxOriginal.component === original);
+    check('文案也换成了我们的', official.options.label(), 'Agent 预设');
     const before = calls.markDirty;
     check('再接管一次仍是 taken', takeOverOfficialEntry(slots, ourComponent, () => 'Agent 预设'), 'taken');
     check('内容没变就不再通知（避免 onMutate 自激）', calls.markDirty, before);
     check('还原成功', restoreOfficialEntry(slots), true);
-    ok('渲染体还原成官方的', official.component !== ourComponent);
+    ok('渲染体还原成官方的', official.component === original);
     ok('原件记录被清掉', official.__psxOriginal === undefined);
     check('没接管过就别乱还原', restoreOfficialEntry(slots), false);
   }
   {
-    check('官方那条不在时报告 absent', takeOverOfficialEntry(fakeSlots([ours]).slots, ourComponent, () => 'x'), 'absent');
+    check('官方那条不在时报告 absent', takeOverOfficialEntry(fakeSlots([other]).slots, ourComponent, () => 'x'), 'absent');
     check('登记表读不到时报告 no-ledger', takeOverOfficialEntry({ entries: () => [] }, ourComponent, () => 'x'), 'no-ledger');
   }
 
   {
-    // 官方先注册、我们后到：直接接管，不再注册自己那条 → 侧栏天然一条
+    // 官方先注册、我们后到：改它的渲染体。**一次注册都不做**——不造第二个。
     const official = makeOfficial();
     const { slots, record, calls } = fakeSlots([official, other]);
-    const control = installSectionControl(slots, () => ourComponent);
-    check('走接管那条路', control.mode, 'takeover');
-    check('通道是登记表', control.via, 'ledger');
-    check('没有额外注册自己那条', calls.registered.length, 0);
-    check('登记表里仍只有一条 Agent 预设', record.entries.filter((e) => e.options.id === 'agent-presets').length, 1);
-    ok('渲染体是我们的', official.component === ourComponent);
+    let built = 0;
+    const control = installSectionControl(slots, () => {
+      built += 1;
+      return ourComponent;
+    });
+    check('模式是接管', control.mode, 'takeover');
+    check('原因记为已接管', control.why, 'taken-over');
+    check('从头到尾没有注册过任何条目（不造第二个）', calls.registered.length, 0);
+    check('登记表里只有官方那一条 Agent 预设', record.entries.filter((e) => e.options.id === 'agent-presets').length, 1);
+    ok('官方那条的渲染体是我们的', official.component === ourComponent);
+    check('组件只造了一次（markDirty 回调没有自激重建）', built, 1);
     ok('重复安装拿回同一个实例（原型标记生效）', installSectionControl(slots, () => ourComponent) === control);
     control.dispose();
-    ok('dispose 后原件还原', official.component !== ourComponent);
+    ok('dispose 后渲染体还原', official.component !== ourComponent);
     ok('dispose 后标记被清掉（可以重装）', Object.getPrototypeOf(slots).__presetStudioSection === undefined);
   }
   {
-    // 官方还没注册：先自己注册一条顶上，官方一出现就被接管并释放自己那条
-    const { slots, record, calls } = fakeSlots([]);
+    // 官方还没注册：什么都不做，等它出现——onMutate 一通知就当场改。
+    const { slots, record, calls } = fakeSlots([other]);
     const control = installSectionControl(slots, () => ourComponent);
-    check('没有官方那条时自己顶上', control.mode, 'own');
-    check('注册了一条', calls.registered.length, 1);
-    check('我们那条 priority 是 -1', calls.registered[0].options.priority, -1);
-    // 模拟官方插件此刻注册并通知
+    check('官方不在时不接管', control.mode, 'none');
+    check('原因写明是还没注册', control.why, 'official-not-registered-yet');
+    check('也不注册自己那条', calls.registered.length, 0);
+    // 官方插件此刻注册并通知
     const official = makeOfficial();
     record.entries = [...record.entries, official];
     slots.markDirty();
-    check('官方一注册就切换成接管', control.mode, 'takeover');
-    ok('官方那条被换成了我们的渲染体', official.component === ourComponent);
-    ok('自己顶上那条被释放了', record.entries.includes(calls.registered[0]) === false);
+    check('官方一注册就改成接管', control.mode, 'takeover');
+    ok('渲染体换成了我们的', official.component === ourComponent);
+    check('仍然没有额外注册', calls.registered.length, 0);
     check('登记表里只剩一条 Agent 预设', record.entries.filter((e) => e.options.id === 'agent-presets').length, 1);
     control.dispose();
+    ok('dispose 后官方那条恢复原样', official.component !== ourComponent);
   }
   {
-    // 登记表不可见（代理挡了 records）→ 退化成「自己注册 + 读取过滤」
-    const record = { entries: [makeOfficial(), other] };
-    const slots = {
-      entries: () => record.entries,
-      register: (options, component) => {
-        const entry = { component, options: { ...options } };
-        record.entries = [...record.entries, entry];
-        return () => {
-          record.entries = record.entries.filter((item) => item !== entry);
-        };
-      },
-    };
-    const official = record.entries[0];
+    // 登记表读不到（代理挡了 records）：什么都不做，不退回"自己注册一条"
+    const record = { entries: [makeOfficial()] };
+    const slots = { entries: () => record.entries, register: () => ok('登记表读不到时绝不注册', true) };
     const control = installSectionControl(slots, () => ourComponent);
-    check('兜底走 filter', control.via, 'filter');
-    check('兜底时自己注册了一条', control.mode, 'own');
-    ok('读取时官方那条被滤掉', slots.entries('settings.section').includes(official) === false);
+    check('无登记表时模式是 none', control.mode, 'none');
+    check('原因写明是登记表读不到', control.why, 'no-ledger');
     control.dispose();
-    ok('dispose 后读取恢复原状', slots.entries('settings.section').includes(official));
+    check('dispose 没接管过也不会炸', control.mode, 'none');
+  }
+  {
+    // 防御：slots 为空时给一个哑控件，不抛
+    const control = installSectionControl(null, () => ourComponent);
+    check('没有 slots 时安全退化', control.mode, 'none');
+    control.dispose();
+    ok('哑控件 dispose 不抛', true);
   }
 }
 

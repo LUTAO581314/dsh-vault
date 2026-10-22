@@ -399,6 +399,8 @@ function registerOfficialPlugin({ record, announce }) {
     component: () => null,
     options: { id: 'agent-presets', order: 20, label: () => 'Agent 预设' },
   };
+  // 记一份出厂渲染体：announce() 会同步触发接管，之后 entry.component 已经不是原装了。
+  entry.__origin = entry.component;
   record.entries = [...record.entries, entry];
   announce();
   return entry;
@@ -506,17 +508,18 @@ try {
   failures.push(`apply 抛错：${error.message}`);
 }
 
-// apply 时官方那条还没注册（现实里也确实比我们晚），所以先自己顶上一条。
-check('官方没来时先注册了一条顶上', registered.length, 1);
-check('条目 id 沿用官方的 agent-presets', registered[0]?.options?.id, 'agent-presets');
-check('priority 是 -1（同一 cell 里压过官方）', registered[0]?.options?.priority, -1);
+// apply 时官方那条还没注册（现实里也确实比我们晚）：什么都别建，等它出现。
+check('官方没来时一条也不注册（不造第二个入口）', registered.length, 0);
+check('登记表此时是空的', sectionRecord.entries.length, 0);
+check('diag 说清原因', globalThis.window.__presetStudioDiag?.why, 'official-not-registered-yet');
 
-// 官方插件此刻注册 —— 我们应该当场接管它，并释放自己顶上那条。
+// 官方插件此刻注册 —— 我们应该当场把它的渲染体换成我们的，条目本身不动。
 const official = registerOfficialPlugin(slotsFixture);
-ok('登记表里仍只有一条 Agent 预设', sectionRecord.entries.filter((entry) => entry.options.id === 'agent-presets').length === 1);
-ok('留下的是官方注册的那条', sectionRecord.entries.includes(official));
-ok('自己顶上那条被释放', sectionRecord.entries.includes(registered[0]) === false);
-ok('官方那条的渲染体被换成了我们的', typeof official.component === 'function' && sectionRecord.entries.find((entry) => entry === official)?.component === official.component);
+const officialOriginal = official.__origin;
+check('登记表里只有官方那一条', sectionRecord.entries.filter((entry) => entry.options.id === 'agent-presets').length, 1);
+ok('留下的是官方注册的那条（我们没另建）', sectionRecord.entries.includes(official));
+check('仍然一条也没注册过', registered.length, 0);
+ok('官方那条的渲染体被换成了我们的', official.component !== officialOriginal);
 check('diagnostic 报告接管成功', globalThis.window.__presetStudioDiag?.mode, 'takeover');
 const renderComponent = official.component;
 
