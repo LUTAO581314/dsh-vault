@@ -108,7 +108,7 @@ dsh plugin --profile desktop remove dsh-agent-preset-editor
 - **skill 开关只影响 catalog 可见性**：DSH 的 skill registry 没有 per-skill 禁用接口
 - **MCP 工具只能看不能选**：工具可见性由 MCP server 挂载决定，宿主没有 per-tool 过滤能力
 - **整体替换（complete）每个 preset 只能有一个**：设了两个装配时会报错，UI 会提前拦截
-- **接管官方设置页**只有一条路：直接改官方那条，不删、不藏、也不另建一条。把它的 `entry.component` 和 `entry.options.label` 换成我们的，原件留在 `entry.__psxOriginal` 里，插件卸载时还原。渲染器每次渲染都重新读 `entry.component`（`dsh-client-ui-renderer/lib/client.js`），所以改完 markDirty 一次就生效，条目还在、侧栏天然一条。官方插件总比我们晚注册，所以挂 `onMutate` 盯着，它一出现就当场改。它还没出现、或登记表读不到（代理挡了 `records`）时**什么都不做**（绝不注册第二个「Agent 预设」），页面顶部红条会写明 `mode` 与原因，这时点开看到的是官方旧界面
+- **接管官方设置页**只有一条路：直接改官方那条，不删、不藏、也不另建一条。把它的 `entry.component` 和 `entry.options.label` 换成我们的，原件留在 `entry.__psxOriginal` 里，插件卸载时还原。渲染器每次渲染都重新读 `entry.component`（`dsh-client-ui-renderer/lib/client.js`），所以改完 markDirty 一次就生效，条目还在、侧栏天然一条。插件拿到的 `ctx.slots` 是渲染器的 Service 外壳，只有 `entries / subscribe / register / getVersion`（没有 `records`/`markDirty`/`onMutate`），所以条目从公开的 `entries()` 取、版本号用「注册一条空条目再当场释放」自增、用 `subscribe('settings.section')` 等官方晚注册。官方还没出现、或连 `entries()` 都读不到时**什么都不做**（绝不注册第二个「Agent 预设」），页面顶部红条会写明 `mode` 与原因，这时点开看到的是官方旧界面
 - **客户端只加载 `exports["./client"]` 单个文件**：样式已外置到 `style.css`，逻辑仍在 `client.js` 内
 
 ## 兼容性
@@ -118,14 +118,14 @@ dsh plugin --profile desktop remove dsh-agent-preset-editor
 ## 开发
 
 ```bash
-npm test         # 110 项断言 = 纯函数 78 + 渲染冒烟 32
+npm test         # 111 项断言 = 纯函数 78 + 渲染冒烟 33
 node verify.mjs  # 发版前必跑：测试 → 语法 → 打包 → 装进 profile → 校验配置与日志里的崩溃签名
 ```
 
 `npm test` 跑两个文件：
 
 - `test/pure.test.mjs`（78 项）：范围判定 / 官方段识别 / skill 解析 / catalog 过滤 / 段删除 / 官方条目接管与还原（含「绝不注册第二个」的回归断言）/ 样式版本 / 防漂移。纯函数，不碰 React。
-- `test/render.mjs`（32 项）：**不用 react-dom**，自己写了一个 40 行的迷你渲染器（`useState/useMemo/useEffect/useContext` 全部极简实现，真 React 只提供 `createElement`/`createContext`/`Component`），把 `client.js` 整段 bundle 在假环境里跑起来：apply → 等官方那条出现 → 改它的渲染体（登记表仍一条）→ 渲染列表页 → 点卡片进详情 → 点「检查 / 详细 / AI 检查」→ 返回再进一次。还带三条 harness 自检：组件抛错必须被报成「组件 X 渲染失败：原因」、**hook 条件调用必须被抓到**（React #300 的成因）、setState 不收敛必须报错。
+- `test/render.mjs`（33 项）：**不用 react-dom**，自己写了一个 40 行的迷你渲染器（`useState/useMemo/useEffect/useContext` 全部极简实现，真 React 只提供 `createElement`/`createContext`/`Component`），把 `client.js` 整段 bundle 在假环境里跑起来：apply → 等官方那条出现 → 改它的渲染体（登记表仍一条）→ 渲染列表页 → 点卡片进详情 → 点「检查 / 详细 / AI 检查」→ 返回再进一次。还带三条 harness 自检：组件抛错必须被报成「组件 X 渲染失败：原因」、**hook 条件调用必须被抓到**（React #300 的成因）、setState 不收敛必须报错。
 
 `prepack` 会自动跑测试，不通过打不了包。`verify.mjs` 额外检查三件测试覆盖不到的事：装进 profile 后版本对不对、`--dump-config` 里本插件那行在不在（且官方 `ui-agent-preset` 没被 `disabled`）、本次运行期间日志里有没有新增崩溃签名（`slot entry crashed` / `duplicate factory registration` / `is not defined`）。
 

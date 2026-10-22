@@ -353,16 +353,18 @@ function makeFetch(log) {
 }
 
 function makeSlots() {
+  // 照真机：插件拿到的 ctx.slots 是渲染器 Service 外壳（dsh-client-ui-renderer/lib/client.js:1304 起），
+  // 只有 inject / register / entries / subscribe（微任务通知）/ getVersion——没有 records、markDirty、onMutate。
   const record = { entries: [], version: 0 };
   const listeners = new Set();
   const registered = [];
-  /** 版本自增 + 通知 mutate 监听，和 SlotCore 的 markDirty 同形。 */
   const announce = () => {
     record.version += 1;
-    for (const listener of [...listeners]) listener('settings.section', record);
+    queueMicrotask(() => {
+      for (const listener of [...listeners]) listener();
+    });
   };
   const slots = {
-    records: new Map(),
     inject: (_name, callback) => {
       const result = callback();
       return typeof result === 'function' ? result : () => {};
@@ -377,16 +379,14 @@ function makeSlots() {
         announce();
       };
     },
-    entries: () => record.entries,
-    markDirty: () => announce(),
-    releaseEntry: () => {},
-    onMutate: (listener) => {
+    entries: (key) => (key === 'settings.section' ? record.entries : []),
+    subscribe: (key, listener) => {
+      if (key !== 'settings.section') return () => {};
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     getVersion: () => record.version,
   };
-  slots.records.set('settings.section', record);
   return { slots, registered, record, announce };
 }
 
@@ -509,6 +509,7 @@ try {
 }
 
 // apply 时官方那条还没注册（现实里也确实比我们晚）：什么都别建，等它出现。
+check('假件没有 records（和真机一样）', 'records' in slots, false);
 check('官方没来时一条也不注册（不造第二个入口）', registered.length, 0);
 check('登记表此时是空的', sectionRecord.entries.length, 0);
 check('diag 说清原因', globalThis.window.__presetStudioDiag?.why, 'official-not-registered-yet');
@@ -516,9 +517,10 @@ check('diag 说清原因', globalThis.window.__presetStudioDiag?.why, 'official-
 // 官方插件此刻注册 —— 我们应该当场把它的渲染体换成我们的，条目本身不动。
 const official = registerOfficialPlugin(slotsFixture);
 const officialOriginal = official.__origin;
+await new Promise((resolve) => setTimeout(resolve, 0)); // subscribe 是微任务通知
 check('登记表里只有官方那一条', sectionRecord.entries.filter((entry) => entry.options.id === 'agent-presets').length, 1);
 ok('留下的是官方注册的那条（我们没另建）', sectionRecord.entries.includes(official));
-check('仍然一条也没注册过', registered.length, 0);
+check('登记表里没留下我们注册的条目（版本自增用的临时条目已释放）', sectionRecord.entries.length, 1);
 ok('官方那条的渲染体被换成了我们的', official.component !== officialOriginal);
 check('diagnostic 报告接管成功', globalThis.window.__presetStudioDiag?.mode, 'takeover');
 const renderComponent = official.component;

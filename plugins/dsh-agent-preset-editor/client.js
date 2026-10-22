@@ -352,61 +352,76 @@ window.__ModuleLoader__.load({
     const OFFICIAL_ENTRY_ID = 'agent-presets';
 
     /**
-     * 取 settings.section 的登记记录（SlotCore 内部那条 rec）。
-     * `records` 是 SlotCore 的公开类字段（dsh-client-ui-slots/lib/index.js:48）。
-     * 拿不到就什么都不做——**绝不另注册一条顶上**：那等于又造了第二个「Agent 预设」。
+     * settings.section 当前的条目数组。
+     * 插件拿到的 `ctx.slots` 是渲染器的 Service 外壳（dsh-client-ui-renderer/lib/client.js:1304 起），
+     * 它只公开 `entries / getVersion / subscribe / register`，**没有 `records`、`markDirty`、`onMutate`**。
+     * `entries(key)` 返回的就是 SlotCore 里的原始条目对象（没有冻结），所以能直接改。
      * @param slots slots 服务
      */
-    function settingsSectionRecord(slots) {
+    function settingsSectionEntries(slots) {
       try {
-        const record = slots?.records?.get?.('settings.section');
-        if (record !== undefined && record !== null && Array.isArray(record.entries)) return record;
+        const list = typeof slots?.entries === 'function' ? slots.entries('settings.section') : undefined;
+        if (Array.isArray(list)) return list;
       } catch {
-        /* 内部结构不可见 */
+        /* 读不到 */
       }
       return null;
     }
 
     /**
-     * 官方那条登记。同一个 id 只会有一条——我们不注册，所以登记表里如果有，
-     * 那一定是官方插件放的。
+     * 官方那条登记。同一个 id 只会有一条——我们不注册，所以如果有，那一定是官方插件放的。
      * @param slots slots 服务
      */
     function officialEntryOf(slots) {
-      const record = settingsSectionRecord(slots);
-      if (record === null) return null;
-      for (const entry of record.entries) {
+      const list = settingsSectionEntries(slots);
+      if (list === null) return null;
+      for (const entry of list) {
         if (entry?.options?.id === OFFICIAL_ENTRY_ID) return entry;
       }
       return null;
     }
 
     /**
+     * 让 settings.section 的版本号自增一次，导航与内容区才会重读条目。
+     * Service 外壳没有 markDirty，只能用公开的 register：注册一条空条目再立刻释放，
+     * 两次都在同一个同步调用里完成，渲染发生在之后的微任务，所以界面上永远看不到它。
+     * @param slots slots 服务
+     */
+    function bumpSectionVersion(slots) {
+      try {
+        if (typeof slots?.markDirty === 'function' && slots.records?.get) {
+          const record = slots.records.get('settings.section');
+          if (record) {
+            slots.markDirty('settings.section', record);
+            return true;
+          }
+        }
+        if (typeof slots?.register !== 'function') return false;
+        const off = slots.register({ name: 'settings.section', id: '__psx_refresh__', order: 1e9, label: '' }, () => null);
+        if (typeof off === 'function') off();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    /**
      * 直接改官方那条：把它的渲染体和侧栏文案换成我们的。
      *
-     * 不删条目、不藏、也不另建一条——侧栏读的就是这一条，只是它的渲染体已经是我们的页面。
-     * 渲染器每次渲染都重新读 `entry.component`（`dsh-client-ui-renderer/lib/client.js` 的
-     * `const Comp = entry.component`，list 槽在 :814/:821/:885 三处），所以改完 markDirty 一次即可。
+     * 不删条目、不藏、也不另建一条。渲染器每次渲染都重新读 `entry.component`
+     * （dsh-client-ui-renderer/lib/client.js :814/:821/:885），改完让版本号自增一次即可。
      * 原始字段存在 `entry.__psxOriginal` 里，插件卸载时还原。
-     * @param slots slots 服务
-     * @param component 我们的设置页组件
-     * @param label 侧栏文案（返回字符串的函数，和官方那条同形）
-     * @returns 'taken' 改好了 | 'absent' 官方那条还没注册 | 'no-ledger' 登记表读不到
+     * @returns 'taken' 改好了 | 'absent' 官方那条还没注册 | 'no-ledger' 条目读不到
      */
     function takeOverOfficialEntry(slots, component, label) {
-      const record = settingsSectionRecord(slots);
-      if (record === null) return 'no-ledger';
+      if (settingsSectionEntries(slots) === null) return 'no-ledger';
       const entry = officialEntryOf(slots);
       if (entry === null) return 'absent';
       if (entry.component === component) return 'taken';
       if (entry.__psxOriginal === undefined) entry.__psxOriginal = { component: entry.component, label: entry.options.label };
       entry.component = component;
       entry.options.label = label;
-      try {
-        slots.markDirty?.('settings.section', record);
-      } catch {
-        /* 通知失败无妨：下一次登记表变动会带上 */
-      }
+      bumpSectionVersion(slots);
       return 'taken';
     }
 
@@ -421,11 +436,7 @@ window.__ModuleLoader__.load({
       entry.component = original.component;
       if (original.label !== undefined) entry.options.label = original.label;
       delete entry.__psxOriginal;
-      try {
-        slots.markDirty?.('settings.section', settingsSectionRecord(slots));
-      } catch {
-        /* 还原时的通知失败无后遗症 */
-      }
+      bumpSectionVersion(slots);
       return true;
     }
 
@@ -434,7 +445,7 @@ window.__ModuleLoader__.load({
      *
      * 官方插件是 DSH 自带的静态插件，删不掉也禁不掉（内置插件页 inject 了它），
      * 但它的登记条目是活的：换渲染体最省事，条目还在、侧栏天然一条。
-     * 它总比我们晚注册，所以挂 `slots.onMutate` 盯着，它一出现就当场改；
+     * 它总比我们晚注册，所以用 `slots.subscribe('settings.section')` 盯着，它一出现就当场改；
      * 改不上（还没注册 / 登记表读不到 / 抛错）就什么都不做，原因写进诊断。
      * @param slots slots 服务
      * @param componentOf 生成我们的设置页组件（每次调用给一个新的包装件）
@@ -516,12 +527,13 @@ window.__ModuleLoader__.load({
 
       let off = null;
       try {
-        off =
-          typeof slots.onMutate === 'function'
-            ? slots.onMutate((key) => {
-                if (key === 'settings.section') ensure();
-              })
-            : null;
+        // 真机上 ctx.slots 是 Service 外壳，没有 onMutate；它有 subscribe(key, fn)（微任务批量通知）。
+        // 测试里的 SlotCore 假件两者都可能有，优先 subscribe——和真机走同一条路。
+        if (typeof slots.subscribe === 'function') off = slots.subscribe('settings.section', () => ensure());
+        else if (typeof slots.onMutate === 'function')
+          off = slots.onMutate((key) => {
+            if (key === 'settings.section') ensure();
+          });
       } catch {
         off = null;
       }
@@ -2097,7 +2109,7 @@ window.__ModuleLoader__.load({
           return;
         }
         // 官方那条是活的：直接把它的渲染体和侧栏文案换成我们的（不删条目、不藏）。
-        // 官方插件比我们晚注册是常态，所以先装机制（onMutate 盯着），第一次接管放在
+        // 官方插件比我们晚注册是常态，所以先装机制（subscribe 盯着），第一次接管放在
         // inject 回调里——等到 settings.section 声明好了再动手。
         const control = installSectionControl(slots, () => (props) => h(StudioBoundary, null, h(StudioSection, { ...props, ctx })));
         const dispose = slots.inject('settings.section', () => {
