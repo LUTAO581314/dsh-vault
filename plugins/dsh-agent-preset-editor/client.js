@@ -450,10 +450,18 @@ window.__ModuleLoader__.load({
       if (host.__presetStudioSection !== undefined) return host.__presetStudioSection;
 
       const label = () => COPY.nav;
+      // 组件只造一次。每次 ensure 都新建一个函数的话，`entry.component` 的标识每次都会变，
+      // 任何无关的 markDirty 都会把我们这一格重新挂载一遍。
+      let built = null;
+      const buildOnce = () => {
+        if (built === null) built = componentOf();
+        return built;
+      };
       const state = { mode: 'none', why: 'pending' };
       let disposed = false;
       let busy = false;
       let tookOver = false;
+      let warned = false;
 
       const publish = () => {
         let hasOfficial = false;
@@ -476,7 +484,7 @@ window.__ModuleLoader__.load({
         if (disposed || busy) return state;
         busy = true;
         try {
-          const component = componentOf();
+          const component = buildOnce();
           let verdict;
           try {
             verdict = takeOverOfficialEntry(slots, component, label);
@@ -492,6 +500,12 @@ window.__ModuleLoader__.load({
           } else if (verdict !== null) {
             state.mode = 'none';
             state.why = verdict === 'absent' ? 'official-not-registered-yet' : verdict;
+            // 接管不上就没有入口（我们不建第二个），所以至少让日志里有据可查。
+            // 'official-not-registered-yet' 是正常时序，不记。
+            if (!warned && verdict !== 'absent') {
+              warned = true;
+              console.warn('[preset-studio] 没能接管官方「Agent 预设」：' + state.why);
+            }
           }
           publish();
           return state;
@@ -1918,7 +1932,9 @@ window.__ModuleLoader__.load({
         const check = () => {
           try {
             const diag = window.__presetStudioDiag;
-            if (diag && diag.mode === 'none') {
+            // why === 'official-not-registered-yet' 是正常时序（官方插件比我们晚注册），
+            // 这时连入口都还没有，不该弹红条；只有"该在却接不上"才是真问题。
+            if (diag && diag.mode === 'none' && diag.why !== 'official-not-registered-yet') {
               setShadowWarn(
                 `没接上官方那条「Agent 预设」：mode=${String(diag.mode ?? '—')}、官方条目 ${String(diag.hasOfficial)}、原因 ${String(diag.why ?? '—')}。这时点开看到的是官方旧界面。`,
               );
