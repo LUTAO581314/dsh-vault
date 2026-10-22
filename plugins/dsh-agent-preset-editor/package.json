@@ -1,6 +1,6 @@
 {
   "name": "dsh-agent-preset-editor",
-  "version": "0.61.1",
+  "version": "0.62.0",
   "description": "DSH Agent 预设工作室：可视化编辑 preset、系统提示词模块化、插件与 skill 按需启用",
   "license": "MIT",
   "type": "module",

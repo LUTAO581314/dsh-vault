@@ -356,6 +356,11 @@ function makeSlots() {
   const record = { entries: [], version: 0 };
   const listeners = new Set();
   const registered = [];
+  /** 版本自增 + 通知 mutate 监听，和 SlotCore 的 markDirty 同形。 */
+  const announce = () => {
+    record.version += 1;
+    for (const listener of [...listeners]) listener('settings.section', record);
+  };
   const slots = {
     records: new Map(),
     inject: (_name, callback) => {
@@ -363,15 +368,17 @@ function makeSlots() {
       return typeof result === 'function' ? result : () => {};
     },
     register: (options, component) => {
-      registered.push({ options, component });
-      record.entries = [...record.entries, { ...options, component }];
-      for (const listener of listeners) listener(options.name, record);
-      return () => {};
+      const entry = { component, options: { ...options } };
+      registered.push(entry);
+      record.entries = [...record.entries, entry];
+      announce();
+      return () => {
+        record.entries = record.entries.filter((item) => item !== entry);
+        announce();
+      };
     },
     entries: () => record.entries,
-    markDirty: () => {
-      record.version += 1;
-    },
+    markDirty: () => announce(),
     releaseEntry: () => {},
     onMutate: (listener) => {
       listeners.add(listener);
@@ -380,7 +387,21 @@ function makeSlots() {
     getVersion: () => record.version,
   };
   slots.records.set('settings.section', record);
-  return { slots, registered, record };
+  return { slots, registered, record, announce };
+}
+
+/**
+ * 模拟官方 dsh-client-ui-agent-preset 的登记——现实里它总比我们晚一步。
+ * 条目形状与 SlotCore 一致：`{ component, options }`。
+ */
+function registerOfficialPlugin({ record, announce }) {
+  const entry = {
+    component: () => null,
+    options: { id: 'agent-presets', order: 20, label: () => 'Agent 预设' },
+  };
+  record.entries = [...record.entries, entry];
+  announce();
+  return entry;
 }
 
 /** 假的 preset 名单：列表页应该为每一条渲染一张卡片。 */
@@ -473,7 +494,8 @@ const module = factory(fakeRequire);
 ok('客户端模块导出了 apply', typeof module?.apply === 'function');
 ok('declare 了 inject', Array.isArray(module?.inject) && module.inject.includes('slots'));
 
-const { slots, registered } = makeSlots();
+const slotsFixture = makeSlots();
+const { slots, registered, record: sectionRecord } = slotsFixture;
 const ctx = makeCtx(slots);
 Renderer.active = null;
 
@@ -484,17 +506,26 @@ try {
   failures.push(`apply 抛错：${error.message}`);
 }
 
-check('注册了一条 settings.section', registered.length, 1);
+// apply 时官方那条还没注册（现实里也确实比我们晚），所以先自己顶上一条。
+check('官方没来时先注册了一条顶上', registered.length, 1);
 check('条目 id 沿用官方的 agent-presets', registered[0]?.options?.id, 'agent-presets');
-check('priority 是 -1（压过官方那条）', registered[0]?.options?.priority, -1);
-check('官方那条被删掉（只剩我们）', slots.records.get('settings.section').entries.length, 1);
+check('priority 是 -1（同一 cell 里压过官方）', registered[0]?.options?.priority, -1);
+
+// 官方插件此刻注册 —— 我们应该当场接管它，并释放自己顶上那条。
+const official = registerOfficialPlugin(slotsFixture);
+ok('登记表里仍只有一条 Agent 预设', sectionRecord.entries.filter((entry) => entry.options.id === 'agent-presets').length === 1);
+ok('留下的是官方注册的那条', sectionRecord.entries.includes(official));
+ok('自己顶上那条被释放', sectionRecord.entries.includes(registered[0]) === false);
+ok('官方那条的渲染体被换成了我们的', typeof official.component === 'function' && sectionRecord.entries.find((entry) => entry === official)?.component === official.component);
+check('diagnostic 报告接管成功', globalThis.window.__presetStudioDiag?.mode, 'takeover');
+const renderComponent = official.component;
 
 // 第一帧：列表页
 const renderer = new Renderer();
 Renderer.active = renderer;
 let tree = null;
 try {
-  tree = renderer.render(h(registered[0].component, {}));
+  tree = renderer.render(h(renderComponent, {}));
   passed += 1;
 } catch (error) {
   failures.push(`列表页渲染抛错：${error.message}\n${error.stack ?? ''}`);
@@ -550,7 +581,7 @@ ok("数据落地前不显示卡片", findByClass(tree, "psx-card").length === 0)
 // 异步数据落地后再渲染（fetch/remote 都是 promise）
 await new Promise((resolve) => setTimeout(resolve, 30));
 try {
-  tree = renderer.render(h(registered[0].component, {}));
+  tree = renderer.render(h(renderComponent, {}));
   passed += 1;
 } catch (error) {
   failures.push(`数据落地后渲染抛错：${error.message}
@@ -572,7 +603,7 @@ if (cards.length === 0) {
 } else {
   try {
     cards[0].props.onClick();
-    tree = renderer.render(h(registered[0].component, {}));
+    tree = renderer.render(h(renderComponent, {}));
     passed += 1;
   } catch (error) {
     failures.push(`详情页渲染抛错：${error.message}\n${error.stack ?? ''}`);
@@ -593,7 +624,7 @@ if (cards.length === 0) {
     }
     try {
       buttons[0].props.onClick();
-      tree = renderer.render(h(registered[0].component, {}));
+      tree = renderer.render(h(renderComponent, {}));
       passed += 1;
     } catch (error) {
       failures.push(`点「${label}」后渲染抛错：${error.message}`);
@@ -606,10 +637,10 @@ if (cards.length === 0) {
   } else {
     try {
       back[0].props.onClick();
-      tree = renderer.render(h(registered[0].component, {}));
+      tree = renderer.render(h(renderComponent, {}));
       const again = findByClass(tree, 'psx-iconButton').filter((node) => typeof node.props?.onClick === 'function');
       again[0].props.onClick();
-      tree = renderer.render(h(registered[0].component, {}));
+      tree = renderer.render(h(renderComponent, {}));
       passed += 1;
     } catch (error) {
       failures.push(`返回-再进入抛错：${error.message}`);
