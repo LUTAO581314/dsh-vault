@@ -673,6 +673,14 @@ const DEFAULT_CSS = `.psx-section{display:flex;flex-direction:column;gap:20px;pa
 .psx-inspect dl{grid-template-columns:auto minmax(0,1fr)}
 /* 模块/插件提示统一成页面级一条，不再混在某个区块里 */
 .psx-noticeBar{margin:0 0 2px}
+/* ---- 紧凑卡片：设置页内容区只有五六百像素宽，一行至少放两张 ---- */
+.psx-cards{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.psx-card{border-radius:10px}
+.psx-cardMain{gap:6px;padding:10px 12px 2px}
+.psx-cardName{font-size:14px}
+.psx-cardId{font-size:10px}
+.psx-cardDesc{font-size:12px;line-height:1.5}
+.psx-cardFoot{padding:2px 8px 6px}
 `;
 
 function styleFile() {
