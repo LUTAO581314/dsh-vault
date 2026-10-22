@@ -1141,11 +1141,17 @@ window.__ModuleLoader__.load({
      * 注入型插件面板：扫出「哪些插件在往系统提示词里塞东西」，
      * 并对照当前模块清单标出「已接管 / 未接管 / 核心段（不接管）」。
      */
-    function InjectionPanel({ modules }) {
+    function InjectionPanel({ modules, onBatch, saving }) {
       const [state, setState] = useState({ status: 'idle', packages: [], scanned: 0, error: null });
-      const adopted = new Set(
-        (Array.isArray(modules) ? modules : []).filter((mod) => mod?.source === 'detected').map((mod) => mod.section),
-      );
+      // 已接管的段 = modules 里的 detected 条目；它可能被标成 enabled:false（交回插件自己注入）。
+      const detectedRows = (Array.isArray(modules) ? modules : []).filter((mod) => mod?.source === 'detected');
+      const adopted = new Map(detectedRows.map((mod) => [mod.section, mod.enabled !== false]));
+      const takenCount = [...adopted.values()].filter(Boolean).length;
+      const offCount = adopted.size - takenCount;
+      const batch = (enable, sections) => {
+        if (typeof onBatch !== 'function') return;
+        void onBatch(enable, sections);
+      };
 
       const scan = useCallback(async () => {
         setState({ status: 'loading', packages: [], scanned: 0, error: null });
@@ -1178,11 +1184,41 @@ window.__ModuleLoader__.load({
             'h4',
             { className: 'psx-blockTitle' },
             '注入型插件',
-            state.status === 'ready' ? h('span', { className: 'psx-count' }, `${state.packages.length} 个插件 / ${total} 段`) : null,
+            adopted.size > 0
+              ? h('span', { className: 'psx-count' }, `接管 ${takenCount} / 交回 ${offCount}`)
+              : state.status === 'ready'
+                ? h('span', { className: 'psx-count' }, `${state.packages.length} 个插件 / ${total} 段`)
+                : null,
           ),
           h(
             'div',
             { className: 'psx-blockActions' },
+            adopted.size > 0
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'psx-mini',
+                    disabled: Boolean(saving) || offCount === 0,
+                    title: '把所有「已交回」的段改成由本插件接管',
+                    onClick: () => batch(true),
+                  },
+                  offCount === 0 ? '已全部接管' : `全部接管（${offCount}）`,
+                )
+              : null,
+            adopted.size > 0
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'psx-mini',
+                    disabled: Boolean(saving) || takenCount === 0,
+                    title: '把所有「已接管」的段交回给插件自己注入',
+                    onClick: () => batch(false),
+                  },
+                  takenCount === 0 ? '已全部交回' : `全部交回（${takenCount}）`,
+                )
+              : null,
             h(
               'button',
               { type: 'button', className: 'psx-mini', disabled: state.status === 'loading', onClick: () => void scan() },
@@ -1190,7 +1226,11 @@ window.__ModuleLoader__.load({
             ),
           ),
         ),
-        h('p', { className: 'psx-note' }, '扫出所有会往系统提示词里注册段的插件。被接管过的段已经变成上面的模块，可以按 preset 开关。'),
+        h(
+          'p',
+          { className: 'psx-note' },
+          '「已接管」= 这一段由本插件注入，可以在任意 preset 里按需关掉；「已交回」= 本插件不接，恢复由插件自己注入。点胶囊即可切换，全部接管会一次性收回。',
+        ),
         state.status === 'error' ? h('p', { className: 'psx-toast', 'data-tone': 'err' }, state.error) : null,
         state.status === 'ready' && state.packages.length === 0
           ? h('p', { className: 'psx-muted' }, `扫了 ${state.scanned} 个 DSH 包，没有发现注入系统提示词的插件。`)
@@ -1218,11 +1258,29 @@ window.__ModuleLoader__.load({
                         {
                           key: section,
                           className: 'psx-chip',
-                          'data-state': adopted.has(section) ? 'on' : 'off',
-                          title: isOfficialSection(section, []) ? '核心段：属于身份/工具/计划约束，不会被自动接管' : adopted.has(section) ? '已接管为模块' : '未接管',
+                          'data-state': adopted.get(section) === true ? 'on' : 'off',
+                          role: 'button',
+                          tabIndex: 0,
+                          style: { cursor: adopted.has(section) && !isOfficialSection(section, []) ? 'pointer' : undefined },
+                          onClick: () => {
+                            if (!adopted.has(section)) return;
+                            if (isOfficialSection(section, [])) return;
+                            batch(adopted.get(section) !== true, [section]);
+                          },
+                          title: isOfficialSection(section, [])
+                            ? '核心段：属于身份/工具/计划约束，不会被自动接管'
+                            : adopted.has(section)
+                              ? adopted.get(section) === true
+                                ? '点击交回：不再由本插件接管，恢复由插件自己注入'
+                                : '点击接管：这一段改由本插件注入，可在任意 preset 里单独关掉'
+                              : '未接管（没有对应的检测条目，重开会话后会自动纳管）',
                         },
                         h('span', null, section),
-                        adopted.has(section) ? h('span', { className: 'psx-chipTag' }, '已接管') : null,
+                        adopted.has(section) === false
+                          ? null
+                          : adopted.get(section) === true
+                            ? h('span', { className: 'psx-chipTag' }, '已接管')
+                            : h('span', { className: 'psx-chipTag' }, '已交回'),
                       ),
                     ),
                   ),
@@ -1393,6 +1451,24 @@ window.__ModuleLoader__.load({
         }
       }, [ctx]);
 
+      /** 批量接管 / 交回：只动 source 为 detected 的条目，其它模块一个字都不碰。 */
+      const toggleDetected = useCallback(
+        (enable, sections) => {
+          const wanted = Array.isArray(sections) && sections.length > 0 ? new Set(sections) : null;
+          let touched = 0;
+          const next = state.list.map((entry) => {
+            if (entry?.source !== 'detected') return entry;
+            if (wanted !== null && !wanted.has(entry.section)) return entry;
+            if ((entry.enabled !== false) === Boolean(enable)) return entry;
+            touched += 1;
+            return { ...entry, enabled: Boolean(enable) };
+          });
+          if (touched === 0) return;
+          void commit(next);
+        },
+        [state.list, commit],
+      );
+
       return h(
         'div',
         { className: 'psx-block' },
@@ -1413,6 +1489,7 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', className: 'psx-mini', disabled: busy, onClick: addOne }, COPY.moduleAdd),
           ),
         ),
+        h(InjectionPanel, { modules: state.list, onBatch: toggleDetected, saving: busy }),
         state.list.length === 0
           ? h('div', { className: 'psx-placeholder' }, COPY.moduleEmpty)
           : h(
@@ -1435,7 +1512,6 @@ window.__ModuleLoader__.load({
               ),
             ),
         h('p', { className: 'psx-note' }, COPY.moduleHint),
-        h(InjectionPanel, { modules: state.list }),
       );
     }
 
