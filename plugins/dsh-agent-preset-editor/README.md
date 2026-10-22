@@ -49,6 +49,8 @@ skill 区列出该 preset 可见的全部 skill（数据源是 skill registry，
 
 样式在 `$DSH_HOME/preset-studio/style.css`，首次启动自动生成，改完保存 5 秒内生效（不用刷新）。所有类名以 `.psx-` 开头。
 
+文件以 `/* @psx-version: <版本> */` 打头。插件升级时版本对不上，会先把旧文件备份成 `style.css.<旧版本>.bak` 再按新默认重写——所以升级即修样式，不会因为「文件已经存在」而永远停在旧样式上。改过的内容在 `.bak` 里。
+
 ## 安装
 
 ```bash
@@ -106,7 +108,7 @@ dsh plugin --profile desktop remove dsh-agent-preset-editor
 - **skill 开关只影响 catalog 可见性**：DSH 的 skill registry 没有 per-skill 禁用接口
 - **MCP 工具只能看不能选**：工具可见性由 MCP server 挂载决定，宿主没有 per-tool 过滤能力
 - **整体替换（complete）每个 preset 只能有一个**：设了两个装配时会报错，UI 会提前拦截
-- **接管官方设置页**依赖「导航读取 `entries()` 且不按 id 去重」这一实现细节。探测失败时会用 DOM 兜底隐藏官方那条，再失败则侧栏出现两条（功能不受影响），页面顶部有红条说明
+- **接管官方设置页**是把官方那条 slot 登记从 `slots.records` 里删掉（框架 disposer 的三件事：摘掉 entries、markDirty、releaseEntry），并挂 `onMutate` 在官方晚注册时再删一次。删不掉时自动退回「读取时过滤」，页面顶部红条会写明走了哪条通道、原因是什么
 - **客户端只加载 `exports["./client"]` 单个文件**：样式已外置到 `style.css`，逻辑仍在 `client.js` 内
 
 ## 兼容性
@@ -116,10 +118,11 @@ dsh plugin --profile desktop remove dsh-agent-preset-editor
 ## 开发
 
 ```bash
-npm test    # 34 项纯函数断言（范围判定 / 官方段识别 / skill 解析 / catalog 过滤 / 段删除 / 一致性）
+npm test         # 75 项断言：范围判定 / 官方段识别 / skill 解析 / catalog 过滤 / 段删除 / 导航接管 / 样式版本 / 防漂移
+node verify.mjs  # 发版前必跑：测试 → 语法 → 打包 → 装进 profile → 校验配置与日志里的崩溃签名
 ```
 
-`prepack` 会自动跑测试，不通过打不了包。
+`prepack` 会自动跑测试，不通过打不了包。`verify.mjs` 额外检查三件测试覆盖不到的事：装进 profile 后版本对不对、`--dump-config` 里本插件那行在不在（且官方 `ui-agent-preset` 没被 `disabled`）、本次运行期间日志里有没有新增崩溃签名（`slot entry crashed` / `duplicate factory registration` / `is not defined`）。
 
 ## 许可
 

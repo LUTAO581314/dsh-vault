@@ -660,6 +660,19 @@ const DEFAULT_CSS = `.psx-section{display:flex;flex-direction:column;gap:20px;pa
 .psx-inspect{border-radius:10px;background:var(--dsw-alias-fill-secondary,#fafafa)}
 .psx-diag{border-radius:10px}
 .psx-module{border-radius:10px}
+
+/* ---- 窄窗口修正：设置页内容区只有 ~520px 时标题行、操作按钮、搜索框会互相压住 ---- */
+.psx-blockHead{flex-wrap:wrap;row-gap:8px}
+.psx-blockActions{flex-wrap:wrap;margin-left:auto;justify-content:flex-end}
+.psx-catalogBar{flex-wrap:wrap;row-gap:8px}
+.psx-search{flex:1 1 180px;min-width:0}
+.psx-dirAdd{flex-wrap:wrap}
+.psx-dirAdd>*{min-width:0}
+.psx-blockTitle{flex:0 1 auto;min-width:0}
+.psx-chips{row-gap:6px}
+.psx-inspect dl{grid-template-columns:auto minmax(0,1fr)}
+/* 模块/插件提示统一成页面级一条，不再混在某个区块里 */
+.psx-noticeBar{margin:0 0 2px}
 `;
 
 function styleFile() {
@@ -667,22 +680,62 @@ function styleFile() {
 }
 
 function readStyle() {
+  const version = readVersion();
   try {
     const text = fs.readFileSync(styleFile(), 'utf8');
-    if (text.trim().length > 0) return text;
+    // 只认版本对得上的文件：升级没写成（权限/被占用）时照样给新样式，不能让旧文件把修复挡住。
+    if (text.trim().length > 0 && styleVersionOf(text) === version) return text;
   } catch {
     /* 还没播种 */
   }
-  return DEFAULT_CSS;
+  return styleDocument(version);
+}
+
+/**
+ * 样式文件带版本标记：`/* @psx-version: 0.61.0 *\/` 打头。
+ *
+ * 之前只在文件不存在时播种，于是 `DEFAULT_CSS` 改完之后对已经播种过的机器**永远不生效**——
+ * 老用户看到的是旧样式，而我在编辑器里看到的是新样式，两边对不上。改成：
+ * 标记版本 == 当前版本 → 不动；版本不一致或没有标记（0.61.0 之前的播种文件）→ 先备份成
+ * `style.css.<旧版本|legacy>.bak` 再按新默认覆盖。手改过的文件也能从 .bak 里拿回来。
+ */
+const STYLE_VERSION_PATTERN = /^\/\*\s*@psx-version:\s*([0-9A-Za-z.+-]+)/;
+
+function styleDocument(version) {
+  return `/* @psx-version: ${version} —— 播种文件；改样式直接改这里，插件升级时先备份再覆盖 */\n${DEFAULT_CSS}\n`;
+}
+
+function styleVersionOf(text) {
+  const matched = STYLE_VERSION_PATTERN.exec(String(text ?? ''));
+  return matched === null ? null : matched[1];
 }
 
 function seedStyle() {
+  const version = readVersion();
+  let current = null;
   try {
-    if (!fs.existsSync(styleFile())) {
-      writeFileAtomic(styleFile(), `${DEFAULT_CSS}\n`);
-    }
+    current = fs.readFileSync(styleFile(), 'utf8');
   } catch {
-    /* 写不了就用内置默认 */
+    current = null;
+  }
+  if (current === null || current.trim().length === 0) {
+    try {
+      writeFileAtomic(styleFile(), styleDocument(version));
+      return { seeded: true, reason: 'created', version };
+    } catch {
+      return { seeded: false, reason: 'unwritable', version };
+    }
+  }
+  const found = styleVersionOf(current);
+  if (found === version) return { seeded: false, reason: 'current', version };
+  const backup = `${styleFile()}.${found ?? 'legacy'}.bak`;
+  try {
+    fs.copyFileSync(styleFile(), backup);
+    writeFileAtomic(styleFile(), styleDocument(version));
+    // 没有标记的是 0.61.0 之前播种的旧文件——那时还没有标记，只能备份后按新默认覆盖。
+    return { seeded: true, reason: found === null ? 'legacy' : 'upgraded', version, from: found ?? null, backup };
+  } catch {
+    return { seeded: false, reason: 'upgrade-failed', version, from: found ?? null };
   }
 }
 /** HTTP 端点：模块读写与指令执行，避免 client 每次操作都写 profile patch。 */
@@ -831,8 +884,9 @@ async function handleStudioHttp(ctx, getModules, setModules, req, res, gate) {
   }
   if (pathname === '/preset-studio/reset-style' && req.method === 'POST') {
     try {
-      writeFileAtomic(styleFile(), `${DEFAULT_CSS}\n`);
-      return sendJson(res, 200, { ok: true, bytes: DEFAULT_CSS.length });
+      const version = readVersion();
+      writeFileAtomic(styleFile(), styleDocument(version));
+      return sendJson(res, 200, { ok: true, bytes: DEFAULT_CSS.length, version });
     } catch (error) {
       return sendJson(res, 500, { ok: false, error: String(error?.message ?? error) });
     }

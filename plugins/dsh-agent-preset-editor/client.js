@@ -270,18 +270,53 @@ window.__ModuleLoader__.load({
     const Chip = memo(ChipBase);
     // ---- 公共基础设施：通知、错误边界、条目遮蔽 ----
 
-    /** 统一通知：所有区块共用一套 toast，不再各自维护 message state。 */
-    function useNotifier() {
+    /**
+     * 通知条挂在页面上，不挂在区块里。
+     *
+     * 之前每个区块自己 useNotifier()、自己渲染 toast：保存模块的提示渲染在插件区里，
+     * 插件操作的提示渲染在 Skill 区旁边——说的是 A 区的事，出现在 B 区。
+     * 现在只有一个 NoticeProvider（包住列表页和详情页），一条 NoticeBar 显示在最上方，
+     * 谁报的都在同一处出现，不会被误读成相邻区块的状态。
+     */
+    const NoticeContext = React.createContext(null);
+
+    function NoticeProvider({ children }) {
       const [toast, setToast] = useState(null);
       const notify = useCallback((text, tone) => {
         setToast({ text, tone: tone ?? (/失败|错误|不可|无法/.test(String(text)) ? 'err' : 'ok') });
       }, []);
       const clear = useCallback(() => setToast(null), []);
-      const view =
-        toast === null
-          ? null
-          : h('p', { className: 'psx-toast', 'data-tone': toast.tone, role: 'status' }, toast.text);
-      return { notify, clear, view };
+      const value = React.useMemo(() => ({ notify, clear, last: toast }), [notify, clear, toast]);
+      return h(NoticeContext.Provider, { value }, children);
+    }
+
+    /** 读全局通知器。没被 provider 包住时退化为控制台提示——它不该在这里发生，但不许崩。 */
+    function useNotifier() {
+      const shared = React.useContext(NoticeContext);
+      const notify = useCallback(
+        (text, tone) => {
+          const next = { text, tone: tone ?? (/失败|错误|不可|无法/.test(String(text)) ? "err" : "ok") };
+          if (shared !== null) shared.notify(next.text, next.tone);
+          else console.warn('[preset-studio]', next.text);
+        },
+        [shared],
+      );
+      const clear = useCallback(() => {
+        if (shared !== null) shared.clear();
+      }, [shared]);
+      return { notify, clear };
+    }
+
+    /** 一条通知条。Detail 与列表页各放一处（同一个 provider，同一份状态）。 */
+    function NoticeBar(props) {
+      const shared = React.useContext(NoticeContext);
+      const toast = props?.toast ?? shared?.last ?? null;
+      if (toast === null || toast === undefined) return null;
+      return h(
+        'div',
+        { className: 'psx-noticeBar' },
+        h('p', { className: 'psx-toast', 'data-tone': toast.tone, role: 'status' }, toast.text),
+      );
     }
 
     /** 错误边界：区块渲染崩溃时显示原因，而不是静默回落到官方条目。 */
@@ -895,7 +930,7 @@ window.__ModuleLoader__.load({
       const [state, setState] = useState({ status: 'idle', found: false, includeDefaultRoots: true, customSkillDirs: [], error: null, pending: false });
       const busy = state.pending === true;
       const [draft, setDraft] = useState('');
-      const { notify, clear: clearNotice, view: noticeView } = useNotifier();
+      const { notify, clear: clearNotice } = useNotifier();
       const [available, setAvailable] = useState({ status: 'idle', skills: [], roots: [], disabled: [] });
 
       const loadSkills = useCallback(async () => {
@@ -1111,7 +1146,6 @@ window.__ModuleLoader__.load({
                       ),
                     ),
                   ),
-              noticeView,
               state.status === 'ready' && state.found === false
                 ? h('details', { className: 'psx-raw' }, h('summary', null, '看到的 preset 声明（前 400 字）'), h('pre', null, state.raw ?? ''))
                 : null,
@@ -1220,7 +1254,7 @@ window.__ModuleLoader__.load({
       const [state, setState] = useState({ status: 'loading', list: [], transport: 'unknown', pending: false, autoEditId: null });
       const [baseline, setBaseline] = useState([]);
       const { pending: busy, autoEditId } = state;
-      const { notify, clear: clearNotice, view: noticeView } = useNotifier();
+      const { notify, clear: clearNotice } = useNotifier();
 
       // 基线 = 第一次装配时记录的官方段名单；用它判断「用户填的 section 名会不会覆盖 DSH 自带的段」。
       useEffect(() => {
@@ -1396,7 +1430,6 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', className: 'psx-mini', disabled: busy, onClick: addOne }, COPY.moduleAdd),
           ),
         ),
-        noticeView,
         state.list.length === 0
           ? h('div', { className: 'psx-placeholder' }, COPY.moduleEmpty)
           : h(
@@ -1463,7 +1496,7 @@ window.__ModuleLoader__.load({
         }
       };
       const [picked, setPicked] = useState(null);
-      const { notify, clear: clearNotice, view: noticeView } = useNotifier();
+      const { notify, clear: clearNotice } = useNotifier();
 
       const [channel, setChannel] = useState({ state: 'idle' });
       const [health, setHealth] = useState({ status: 'idle', data: null, error: null });
@@ -1556,6 +1589,7 @@ window.__ModuleLoader__.load({
           row.isDefault ? h(Tag, { tone: 'solid' }, COPY.inUse) : null,
         ),
 
+        h(NoticeBar, null),
         inv.status === 'error' ? h('p', { className: 'psx-error', role: 'alert' }, inv.error) : null,
         inv.status === 'idle' ? h('p', { className: 'psx-muted' }, COPY.loading) : null,
         row.broken !== undefined ? h('p', { className: 'psx-placeholder' }, COPY.broken) : null,
@@ -1633,7 +1667,6 @@ window.__ModuleLoader__.load({
             : aiAudit.status === 'loading'
               ? h('p', { className: 'psx-note' }, '正在用默认模型分析…')
               : null,
-          noticeView,
           collapsed.plugins
             ? null
             : (() => {
@@ -1914,7 +1947,12 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function StudioSection({ ctx }) {
+    /** 入口组件：只负责提供通知上下文，真正的页面在 StudioShell。 */
+    function StudioSection(props) {
+      return h(NoticeProvider, null, h(StudioShell, props));
+    }
+
+    function StudioShell({ ctx }) {
       const [state, setState] = useState({ status: 'idle', error: null, rows: [], saving: false, view: null });
       const [shadowWarn, setShadowWarn] = useState(null);
 
@@ -1938,7 +1976,7 @@ window.__ModuleLoader__.load({
         const timer = setInterval(check, 2000);
         return () => clearInterval(timer);
       }, []);
-      const { notify, clear: clearNotice, view: noticeView } = useNotifier();
+      const { notify, clear: clearNotice } = useNotifier();
 
       /** 官方「创造模式」入口：用 cordis preset 起一个新任务，让 Agent 去写 preset/插件。 */
       const startCreator = () => {
@@ -2022,6 +2060,7 @@ window.__ModuleLoader__.load({
         { className: 'psx-section' },
         h('h2', { className: 'psx-title' }, COPY.nav),
         h('p', { className: 'psx-intro' }, COPY.intro),
+        h(NoticeBar, null),
         shadowWarn === null ? null : h('p', { className: 'psx-toast', 'data-tone': 'err', role: 'alert' }, shadowWarn),
         state.error === null ? null : h('p', { className: 'psx-error', role: 'alert' }, state.error),
 
@@ -2063,7 +2102,6 @@ window.__ModuleLoader__.load({
             IconPlus ? h(IconPlus, { size: 14 }) : null,
             COPY.creator,
           ),
-          noticeView,
         ),
       );
     }

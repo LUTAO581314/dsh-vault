@@ -46,6 +46,8 @@ function load(source, names, constants = {}) {
   return new Function(body)();
 }
 
+const DEFAULT_SEED_HINT = '.psx-section';
+
 let passed = 0;
 const failures = [];
 
@@ -317,6 +319,26 @@ function ok(label, condition) {
     check('没删掉时能看到官方还在', unclean.hasOfficial, true);
   }
 }
+
+// ---- 样式文件版本标记（0.61.0：播种文件必须能随插件升级） ----
+{
+  const patternLine = hostSrc.split(String.fromCharCode(10)).find((line) => line.startsWith('const STYLE_VERSION_PATTERN'));
+  const helpers = new Function(
+    [
+      patternLine,
+      'const DEFAULT_CSS = ".x{color:red}";',
+      extractFunction(hostSrc, 'styleDocument'),
+      extractFunction(hostSrc, 'styleVersionOf'),
+      'return { styleDocument, styleVersionOf };',
+    ].join(String.fromCharCode(10)),
+  )();
+  check('读得出播种版本', helpers.styleVersionOf(helpers.styleDocument('1.2.3')), '1.2.3');
+  check('没有标记返回 null', helpers.styleVersionOf('body{color:red}'), null);
+  check('标记不在开头不算', helpers.styleVersionOf(String.fromCharCode(10) + '/* @psx-version: 9.9.9 */'), null);
+  ok('播种文件带上默认样式', helpers.styleDocument('1.0.0').includes('.x{color:red}'));
+  check('反复播种结果稳定', helpers.styleVersionOf(helpers.styleDocument('0.61.0')), '0.61.0');
+}
+
 
 // ---- 结果 ----
 console.log(`\n${passed} passed, ${failures.length} failed`);
