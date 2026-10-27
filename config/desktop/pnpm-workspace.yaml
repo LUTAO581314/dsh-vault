@@ -1,9 +1,0 @@
-packages:
-  - .
-
-nodeLinker: hoisted
-autoInstallPeers: false
-minimumReleaseAgeExclude:
-  - dsh-armory@2.1.0
-patchedDependencies:
-  dsh-armory@2.1.0: patches/dsh-armory@2.1.0.patch
