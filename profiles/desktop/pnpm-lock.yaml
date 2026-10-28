@@ -100,10 +100,13 @@ importers:
         version: 1.4.0(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-client-ui-slots@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-host-webserver@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(react@18.3.1)
       dsh-purge:
         specifier: file:../../plugins/dsh-purge
-        version: file:../../plugins/dsh-purge(@deepseek-ai/cordis@4.0.5)
+        version: file:../../plugins/dsh-purge
       dsh-rewind-plugin:
         specifier: 0.19.1
         version: 0.19.1(5c1b42f2355c4bb4ce3c071df521f24d)
+      dsh-sidebar-pet:
+        specifier: file:../../plugins/dsh-sidebar-pet
+        version: file:../../plugins/dsh-sidebar-pet
       dsh-univer-office:
         specifier: 0.3.7
         version: 0.3.7(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-attachment@0.2.0-rc.2(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-host-webserver@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.1.5-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/dsh-settings@0.2.1-rc.4(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.1.5-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/schemastery@3.18.5)(node-addon-require-builtin@0.1.9))(@deepseek-ai/dsh-skill@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-scope@0.1.5-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/dsh-tools@0.2.1-rc.4(ea48c43db8d2d274421ba038507cdc37))(@deepseek-ai/schemastery@3.18.5)
@@ -4784,10 +4787,6 @@ packages:
 
   dsh-purge@file:../../plugins/dsh-purge:
     resolution: {directory: ../../plugins/dsh-purge, type: directory}
-    engines: {node: '>=18'}
-    hasBin: true
-    peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.1
 
   dsh-rewind-plugin@0.19.1:
     resolution: {integrity: sha512-d5PMIQnuT4IjOCDOi+sZiwwnqwmKCbI0egyP2iB2ct4LuvgDtdLLDTr2TDIb6AqT0J8NaQoFEPJHL11QssPpxg==}
@@ -4848,6 +4847,10 @@ packages:
         optional: true
       '@deepseek-ai/schemastery':
         optional: true
+
+  dsh-sidebar-pet@file:../../plugins/dsh-sidebar-pet:
+    resolution: {directory: ../../plugins/dsh-sidebar-pet, type: directory}
+    engines: {node: '>=22.15'}
 
   dsh-univer-office@0.3.7:
     resolution: {integrity: sha512-2eEi35ZzTOZiFQEEuNiF68MKWGKlXhVJiaOwCO5gdgNj0ZA+VesdoRxmT8hhFspbMtPfRp/0CoSo7PwFwBbBWw==}
@@ -12313,9 +12316,7 @@ snapshots:
       '@deepseek-ai/dsh-client-ui-slots': 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-host-webserver': 0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)
 
-  dsh-purge@file:../../plugins/dsh-purge(@deepseek-ai/cordis@4.0.5):
-    dependencies:
-      '@deepseek-ai/cordis': 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
+  dsh-purge@file:../../plugins/dsh-purge: {}
 
   dsh-rewind-plugin@0.19.1(5c1b42f2355c4bb4ce3c071df521f24d):
     optionalDependencies:
@@ -12334,6 +12335,8 @@ snapshots:
       '@deepseek-ai/dsh-tools': 0.2.1-rc.4(ea48c43db8d2d274421ba038507cdc37)
       '@deepseek-ai/dsh-working-directory': 0.2.1-rc.4(a75feabc90f1af0722b3b5b655c86853)
       '@deepseek-ai/schemastery': 3.18.5
+
+  dsh-sidebar-pet@file:../../plugins/dsh-sidebar-pet: {}
 
   dsh-univer-office@0.3.7(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-attachment@0.2.0-rc.2(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-host-webserver@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.1.5-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/dsh-settings@0.2.1-rc.4(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-session@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-scope@0.1.5-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/schemastery@3.18.5)(node-addon-require-builtin@0.1.9))(@deepseek-ai/dsh-skill@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5)(@deepseek-ai/dsh-llm@0.2.1-rc.4(@deepseek-ai/cordis@4.0.5))(@deepseek-ai/dsh-scope@0.1.5-rc.3(@deepseek-ai/cordis@4.0.5)))(@deepseek-ai/dsh-tools@0.2.1-rc.4(ea48c43db8d2d274421ba038507cdc37))(@deepseek-ai/schemastery@3.18.5):
     dependencies:

@@ -10,7 +10,7 @@
     cd dsh-vault
     .\scripts\install.ps1
 
-安装器会把仓库清单中的依赖与 bundle 合并进 DSH desktop profile，保留现有插件；将两个插件复制到 DSH_HOME/plugins；安装固定版本的 REA MCP；再把 REA server 合并到工作区的 .dsh/mcp.json。如果检测到本机 MultiZen token 文件，会把 MultiZen MCP 合并到 DSH desktop profile。更改前会备份 profile manifest、锁文件、Cordis 配置、工作区 MCP 配置和已安装的插件目录。
+安装器会把仓库清单中的依赖与 bundle 合并进 DSH desktop profile，保留现有插件；将三个插件复制到 DSH_HOME/plugins；安装固定版本的 REA MCP；再把 REA server 合并到工作区的 .dsh/mcp.json。如果检测到本机 MultiZen token 文件，会把 MultiZen MCP 合并到 DSH desktop profile。更改前会备份 profile manifest、锁文件、Cordis 配置、工作区 MCP 配置和已安装的插件目录。
 
 默认 DSH_HOME 为 %USERPROFILE%/.dsh，默认工作区为 %USERPROFILE%/Documents/deepseek-harness/default-workspace。可指定其他目录：
 
@@ -22,7 +22,7 @@
 
 - profiles/desktop/package.json 保存当前 desktop profile 的依赖版本、来源和启用 bundle。
 - profiles/desktop/mcp-servers.json 描述 MultiZen 的 Streamable HTTP 地址和 token 文件位置，不包含 token。
-- plugins/dsh-multizen-launcher 是本仓库维护的自制插件。
+- plugins/dsh-multizen-launcher 与 plugins/dsh-sidebar-pet 是本仓库维护的自制插件。
 - plugins/dsh-purge 是 LanJinGod/dsh-purge 上游仓库的子模块，固定在提交 8023a74340acead66f88913d539b605f3754c167。保留上游许可证和署名；上游要求再创作时注明 YuJunZhiXue/dsh-purge 来源。
 - mcp/package.json 固定 REA MCP npm 版本；REA 使用工作区级 stdio 配置。
 
