@@ -35,7 +35,6 @@
     "dsh-plugin-wallpaper-engine": "1.4.0",
     "dsh-rewind-plugin": "0.19.1",
     "dsh-purge": "file:../../plugins/dsh-purge",
-    "dsh-sidebar-pet": "file:../../plugins/dsh-sidebar-pet",
     "dsh-univer-office": "0.3.7",
     "dshmarket": "1.70.2",
     "lunheng-article-pipeline": "19.27.13",
@@ -85,8 +84,7 @@
         "@deepseek-ai/dsh-experimental-auto-review",
         "@deepseek-ai/dsh-experimental-inspector-profile",
         "dsh-pet",
-        "dsh-purge",
-        "dsh-sidebar-pet"
+        "dsh-purge"
       ]
     }
   }

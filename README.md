@@ -2,7 +2,7 @@
 
 简体中文：[README.zh-CN.md](README.zh-CN.md)。
 
-This repository keeps the desktop DSH plugin manifest, the two locally authored plugins, the dsh-purge upstream checkout, and the REA MCP definition. It does not contain chat history, workspace data, credentials, runtime state, or machine-specific MCP configuration.
+This repository keeps the desktop DSH plugin manifest, the locally authored plugin, the dsh-purge upstream checkout, and the REA MCP definition. It does not contain chat history, workspace data, credentials, runtime state, or machine-specific MCP configuration.
 
 ## Install
 
@@ -12,7 +12,7 @@ Clone with the dsh-purge submodule, then run the installer from PowerShell:
     cd dsh-vault
     .\scripts\install.ps1
 
-The installer merges the repository's pinned plugin dependencies and DSH bundles into the desktop profile, copies all three plugin packages into the selected DSH home, installs the REA MCP runtime, and merges its server definition into the chosen workspace's .dsh/mcp.json. When the local MultiZen token file exists, it also updates the MultiZen MCP entry in the desktop profile using the installed dsh-armory MCP helper. The token stays in the local DSH profile and is never written to this repository. Existing bundles, dependencies, and MCP servers are preserved. The installer backs up the profile manifest, lockfile, Cordis patch, and workspace MCP configuration before changing them.
+The installer merges the repository's pinned plugin dependencies and DSH bundles into the desktop profile, copies both plugin packages into the selected DSH home, installs the REA MCP runtime, and merges its server definition into the chosen workspace's .dsh/mcp.json. When the local MultiZen token file exists, it also updates the MultiZen MCP entry in the desktop profile using the installed dsh-armory MCP helper. The token stays in the local DSH profile and is never written to this repository. Existing bundles, dependencies, and MCP servers are preserved. The installer backs up the profile manifest, lockfile, Cordis patch, and workspace MCP configuration before changing them.
 
 The defaults target %USERPROFILE%/.dsh and %USERPROFILE%/Documents/deepseek-harness/default-workspace. Override them when needed:
 
@@ -23,7 +23,7 @@ Install Node.js, npm, and pnpm (or Corepack) first. Use -WhatIf to inspect the t
 ## Contents
 
 - profiles/desktop/package.json records the currently selected desktop dependencies and bundles with exact versions or source refs.
-- plugins/dsh-multizen-launcher and plugins/dsh-sidebar-pet are the local plugins maintained in this repository.
+- plugins/dsh-multizen-launcher is the local plugin maintained in this repository.
 - plugins/dsh-purge is a Git submodule pinned to upstream commit 8023a74340acead66f88913d539b605f3754c167. Keep the upstream license and attribution notices with it; upstream asks downstream projects to credit YuJunZhiXue/dsh-purge.
 - mcp/package.json pins the REA runtime, and mcp/servers.template.json describes its stdio MCP launch command. The installer fills in the local checkout path and preserves other workspace MCP servers.
 - profiles/desktop/mcp-servers.json records the MultiZen Streamable HTTP endpoint. The installer obtains the bearer token from the configured local token file and stores it only in the DSH profile's Cordis patch.

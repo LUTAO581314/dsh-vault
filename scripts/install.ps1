@@ -66,7 +66,7 @@ $mcpServers['rea'] = $serverManifest.mcpServers.rea
 $existingMcp.mcpServers = $mcpServers
 
 if ($WhatIf) {
-  Write-Output "Would copy three repository plugins into: $(Join-Path $DshHome 'plugins')"
+  Write-Output "Would copy two repository plugins into: $(Join-Path $DshHome 'plugins')"
   Write-Output "Would merge $(@($repoManifest.dependencies.PSObject.Properties).Count) pinned packages and $(@($repoManifest.dsh.profile.bundles).Count) DSH bundles into: $profileManifestPath"
   Write-Output "Would use the repository pnpm lockfile: $repoLockPath"
   Write-Output "Would install the pinned REA MCP package under: $(Join-Path $repoRoot 'mcp')"
@@ -104,7 +104,7 @@ foreach ($path in @($profileManifestPath, (Join-Path $profileDir 'pnpm-lock.yaml
 
 $pluginRoot = Join-Path $DshHome 'plugins'
 New-Item -ItemType Directory -Path $pluginRoot -Force | Out-Null
-foreach ($pluginName in @('dsh-multizen-launcher', 'dsh-sidebar-pet', 'dsh-purge')) {
+foreach ($pluginName in @('dsh-multizen-launcher', 'dsh-purge')) {
   $source = Join-Path $repoRoot "plugins\$pluginName"
   $target = Join-Path $pluginRoot $pluginName
   if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "Missing plugin source: $source" }
