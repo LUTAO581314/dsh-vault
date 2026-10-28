@@ -1,4 +1,4 @@
-# dsh-sidebar-pet 0.1.0
+# dsh-sidebar-pet 0.1.1
 
 将 DSH 侧边栏中勾选的项目提供给现有桌宠菜单。插件独立保存勾选项；客户端直接调用 `/dsh-pet-7340/menu/item`，使用 `owner=dsh-sidebar-pet` 与 `labels`，宿主仅管理配置和诊断。
 
@@ -7,6 +7,8 @@
 ESM 宿主入口为 `lib/index.js`，导出 `name`、`inject=["webServer"]`、`apply(ctx)`。浏览器入口通过 `exports["./client"]` 指向 `./lib/client.js`，使用与 dsh-armory 相同的 `window.__ModuleLoader__.load({id:"dsh-sidebar-pet",factory(require){...}})` IIFE loader 形式；仓库包含宿主与浏览器源码。`dsh.client.platform` 为 `web`，`dsh.bundle.patch` 指向 `cordis.patch.yml`，补丁插入同名 name/id。
 
 仓库脚本 install.ps1 会复制此包到 DSH_HOME/plugins，并将它注册为 desktop bundle。重启 DSH 后，用 /sidebar-pet/status 检查宿主。
+
+勾选界面在 **设置 → 大肥鱼右键栏**（自带一个独立设置分区；不改动 dsh-pet 自己的「桌宠」分区）。
 
 ## 配置位置
 

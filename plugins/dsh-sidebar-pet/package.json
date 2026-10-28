@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidebar-pet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sidebar pet menu selection with independent profile persistence.",
   "type": "module",
   "main": "lib/index.js",

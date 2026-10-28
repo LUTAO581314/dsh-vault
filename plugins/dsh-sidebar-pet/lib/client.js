@@ -46,12 +46,11 @@ window.__ModuleLoader__.load({id:'dsh-sidebar-pet',factory(require){
   async function sync(){if(stopped)return;const items=menuEntries(),sig=JSON.stringify(items.map(e=>e.menuLabel));if(sig===signature)return;signature=sig;try{if(items.length>20)throw Error('大肥鱼当前最多支持 20 个迁移入口');if(items.length)await request(BASE+'/item',{owner:OWNER,labels:items.map(e=>e.menuLabel)},abort.signal);else await request(BASE+'/item?owner='+OWNER,undefined,abort.signal,'DELETE');message='';}catch(e){signature='';if(!stopped)message='菜单同步失败：'+e.message;}emit();}
   async function save(value){if(saving)return;saving=true;emit();try{await request('/sidebar-pet/config',{selected:value},abort.signal);selected=value;discover();message='已保存';}catch(e){message='保存失败：'+e.message;}finally{saving=false;emit();}}
   function Settings(){const [,setRevision]=useState(0);useEffect(()=>{const fn=()=>setRevision(x=>x+1);listeners.add(fn);return()=>listeners.delete(fn)},[]);return h('section',{className:'dsp-settings'},h('h3',null,'左侧栏入口迁移'),h('p',null,'勾选的入口将隐藏在左侧，并平铺到大肥鱼右键菜单。取消勾选立即恢复；新插件默认保留在左侧。'),catalog.map(e=>h('label',{key:e.key},h('input',{type:'checkbox',disabled:saving,checked:selected.includes(e.key),onChange:()=>save(selected.includes(e.key)?selected.filter(x=>x!==e.key):[...selected,e.key])}),e.label)),!catalog.length&&h('p',null,'展开左侧栏后自动发现入口。'),h('small',{role:'status'},message));}
-  // Append inside the existing pet section while preserving the renderer's original injection.
-  ctx.slots.inject('settings.section',()=>{
-   const pet=all('settings.section').find(e=>id(e)==='pet-config');
-   if(pet){const Original=pet.component;return ctx.slots.register({...pet.options,priority:(pet.options.priority||0)-100,label:pet.options.label,inject:pet.inject||pet.options.inject},props=>h(React.Fragment,null,h(Original,props),h(Settings)));}
-   return ctx.slots.register({name:'settings.section',id:OWNER,order:31,label:'大肥鱼右键栏'},Settings);
-  });
+  // Own settings section. Re-registering the pet's "pet-config" cell under the same id
+  // shadowed its body (slots dedupe list cells by id) but NOT its nav row -- the settings
+  // nav projects raw entries, so the same label showed up twice. A distinct id leaves the
+  // pet section untouched and gives the migration list its own nav row.
+  ctx.slots.inject('settings.section',()=>ctx.slots.register({name:'settings.section',id:OWNER,order:31,label:'大肥鱼右键栏'},Settings));
   for(const slot of ['sidebar.panellist','sidebar.footer.action']){const off=ctx.slots.subscribe(slot,()=>queueDiscover());if(typeof off==='function')cleanups.push(off);}
   function queueDiscover(){if(pending||stopped)return;pending=true;queueMicrotask(()=>{pending=false;if(!stopped)discover()});}
   const observer=new MutationObserver(records=>{if(records.some(r=>!r.target.closest?.('.dsp-settings')))queueDiscover()});observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['aria-label']});
