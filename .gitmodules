@@ -1,0 +1,3 @@
+[submodule "plugins/dsh-purge"]
+	path = plugins/dsh-purge
+	url = https://github.com/LanJinGod/dsh-purge.git

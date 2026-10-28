@@ -1,0 +1,9 @@
+{
+  "name": "dsh-vault-mcp-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned MCP runtime used by the local DSH plugin setup.",
+  "dependencies": {
+    "rea-agents": "6.7.0"
+  }
+}

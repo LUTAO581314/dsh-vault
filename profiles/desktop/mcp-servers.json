@@ -1,0 +1,10 @@
+{
+  "multizen": {
+    "name": "multizen",
+    "transport": "streamable-http",
+    "url": "http://127.0.0.1:7777/mcp",
+    "tokenFile": "%APPDATA%/MultiZen/mcp-token",
+    "authHeader": "Authorization",
+    "authScheme": "Bearer"
+  }
+}

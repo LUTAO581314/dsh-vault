@@ -1,0 +1,14 @@
+**/node_modules/
+**/.env
+**/.env.*
+!.env.example
+**/.credentials*
+**/*.log
+**/*.tmp
+**/*.bak
+**/.dsh/
+**/pnpm-lock.yaml
+!profiles/desktop/pnpm-lock.yaml
+!profiles/desktop/pnpm-workspace.yaml
+*.local.json
+.test-*/

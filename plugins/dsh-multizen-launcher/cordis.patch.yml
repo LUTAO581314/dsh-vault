@@ -1,0 +1,5 @@
+- insert:
+    - id: dsh-multizen-launcher
+      name: dsh-multizen-launcher
+      config:
+        port: 7777
